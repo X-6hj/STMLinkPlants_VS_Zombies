@@ -83,7 +83,8 @@ public:
     virtual void judgeAttack();
     virtual void normalAttack(PlantInstance *plant);
     virtual void crushDie();
-    virtual void getPea(int attack, int direction);
+    virtual void boomDie();
+    virtual void getPea(int attack, int direction, int bKind = 0);
     virtual void getHit(int attack);
     virtual void autoReduceHp();
     virtual void normalDie();
@@ -94,6 +95,9 @@ public:
     qreal speed;
     int altitude;
     bool beAttacked, isAttacking, goingDie;
+    bool isFrozen;
+    int freezeTimer;
+    qreal originalSpeed;
 
     qreal X, ZX;
     qreal attackedLX, attackedRX;
@@ -105,6 +109,7 @@ public:
     QGraphicsPixmapItem *shadowPNG;
     MoviePixmapItem *picture;
     QMediaPlayer *attackMusic, *hitMusic;
+    QGraphicsColorizeEffect *frostEffect;
 };
 
 class OrnZombie1: public Zombie1
@@ -161,6 +166,52 @@ class PoleVaultingZombie: public Zombie1
     Q_DECLARE_TR_FUNCTIONS(PoleVaultingZombie)
 public:
     PoleVaultingZombie();
+};
+
+class PoleVaultingZombieInstance: public ZombieInstance
+{
+public:
+    PoleVaultingZombieInstance(const Zombie *zombie);
+    virtual void checkActs();
+    virtual void playNormalballAudio();
+private:
+    bool hasPole;
+    bool jumping;
+    QMediaPlayer *poleVaultMusic;
+};
+
+// ========== 新增僵尸: 读报僵尸 (NewspaperZombie) ==========
+class NewspaperZombie: public OrnZombie1
+{
+    Q_DECLARE_TR_FUNCTIONS(NewspaperZombie)
+public:
+    NewspaperZombie();
+};
+
+class NewspaperZombieInstance: public OrnZombieInstance1
+{
+public:
+    NewspaperZombieInstance(const Zombie *zombie);
+    virtual void getHit(int attack);
+    virtual void playNormalballAudio();
+private:
+    bool isAngry;
+    QMediaPlayer *angryMusic;
+};
+
+// ========== 新增僵尸: 橄榄球僵尸 (FootballZombie) ==========
+class FootballZombie: public OrnZombie1
+{
+    Q_DECLARE_TR_FUNCTIONS(FootballZombie)
+public:
+    FootballZombie();
+};
+
+class FootballZombieInstance: public OrnZombieInstance1
+{
+public:
+    FootballZombieInstance(const Zombie *zombie);
+    virtual void playNormalballAudio();
 };
 
 Zombie *ZombieFactory(GameScene *scene, const QString &ename);

@@ -48,6 +48,9 @@
         <!-- Card -->
         <file>images/Card/Plants/Peashooter.png</file>
         <file>images/Card/Plants/SnowPea.png</file>
+        <file>images/Card/Plants/Repeater.png</file>
+        <file>images/Card/Plants/CherryBomb.png</file>
+        <file>images/Card/Plants/PotatoMine.png</file>
         <file>images/Card/Plants/SunFlower.png</file>
         <file>images/Card/Plants/WallNut.png</file>
         <!-- Peashooter -->
@@ -56,6 +59,19 @@
         <!-- Snow Pea -->
         <file>images/Plants/SnowPea/0.gif</file>
         <file>images/Plants/SnowPea/SnowPea.gif</file>
+        <!-- Repeater -->
+        <file>images/Plants/Repeater/0.gif</file>
+        <file>images/Plants/Repeater/Repeater.gif</file>
+        <!-- CherryBomb -->
+        <file>images/Plants/CherryBomb/0.gif</file>
+        <file>images/Plants/CherryBomb/CherryBomb.gif</file>
+        <file>images/Plants/CherryBomb/Boom.gif</file>
+        <!-- PotatoMine -->
+        <file>images/Plants/PotatoMine/0.gif</file>
+        <file>images/Plants/PotatoMine/PotatoMine.gif</file>
+        <file>images/Plants/PotatoMine/PotatoMineNotReady.gif</file>
+        <file>images/Plants/PotatoMine/PotatoMine_mashed.gif</file>
+        <file>images/Plants/PotatoMine/ExplosionSpudow.gif</file>
         <!-- Sunflower -->
         <file>images/Plants/SunFlower/0.gif</file>
         <file>images/Plants/SunFlower/SunFlower1.gif</file>
@@ -104,6 +120,39 @@
         <file>images/Zombies/BucketheadZombie/BucketheadZombie.gif</file>
         <file>images/Zombies/BucketheadZombie/BucketheadZombieAttack.gif</file>
         <file>images/Zombies/BucketheadZombie/1.gif</file>
+        <!-- PoleVaulting Zombie -->
+        <file>images/Card/Zombies/PoleVaultingZombie.png</file>
+        <file>images/Zombies/PoleVaultingZombie/0.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombie.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieWalk.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieAttack.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieJump.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieLostHeadWalk.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieLostHeadAttack.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieHead.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieDie.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/BoomDie.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/1.gif</file>
+        <!-- Newspaper Zombie -->
+        <file>images/Card/Zombies/NewspaperZombie.png</file>
+        <file>images/Zombies/NewspaperZombie/0.gif</file>
+        <file>images/Zombies/NewspaperZombie/HeadWalk0.gif</file>
+        <file>images/Zombies/NewspaperZombie/HeadAttack0.gif</file>
+        <file>images/Zombies/NewspaperZombie/LostNewspaper.gif</file>
+        <file>images/Zombies/NewspaperZombie/LostHeadAttack0.gif</file>
+        <file>images/Zombies/NewspaperZombie/Head.gif</file>
+        <file>images/Zombies/NewspaperZombie/Die.gif</file>
+        <file>images/Zombies/NewspaperZombie/BoomDie.gif</file>
+        <file>images/Zombies/NewspaperZombie/1.gif</file>
+        <!-- Football Zombie -->
+        <file>images/Card/Zombies/FootballZombie.png</file>
+        <file>images/Zombies/FootballZombie/0.gif</file>
+        <file>images/Zombies/FootballZombie/FootballZombie.gif</file>
+        <file>images/Zombies/FootballZombie/FootballZombieAttack.gif</file>
+        <file>images/Zombies/FootballZombie/FootballZombieOrnLost.gif</file>
+        <file>images/Zombies/FootballZombie/FootballZombieOrnLostAttack.gif</file>
+        <file>images/Zombies/FootballZombie/BoomDie.gif</file>
+        <file>images/Zombies/FootballZombie/1.gif</file>
         <!-- Translations -->
         <file>translations/main.zh_CN.qm</file>
         <!-- Music -->
@@ -122,6 +171,10 @@
         <file>audio/plant2.mp3</file>
         <file>audio/awooga.mp3</file>
         <file>audio/siren.mp3</file>
+        <file>audio/potato_mine.mp3</file>
+        <file>audio/polevault.mp3</file>
+        <file>audio/newspaper_rarrgh2.mp3</file>
+        <file>audio/explosion.mp3</file>
         <file>audio/groan1.mp3</file>
         <file>audio/groan2.mp3</file>
         <file>audio/groan3.mp3</file>

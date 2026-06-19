@@ -85,10 +85,14 @@ ZombieInstance::ZombieInstance(const Zombie *zombie)
     uuid = QUuid::createUuid();
     hp = zombieProtoType->hp;
     speed = zombie->speed;
+    originalSpeed = zombie->speed;
     altitude = 1;
     beAttacked = true;
     isAttacking = false;
     goingDie = false;
+    isFrozen = false;
+    freezeTimer = 0;
+    frostEffect = nullptr;
     normalGif = zombie->normalGif;
     attackGif = zombie->attackGif;
 }
@@ -117,6 +121,18 @@ void ZombieInstance::checkActs()
     if (hp < 1) return;
     if (beAttacked && !isAttacking) {
         judgeAttack();
+    }
+    // 处理冰冻减速计时器
+    if (isFrozen) {
+        freezeTimer -= 100;
+        if (freezeTimer <= 0) {
+            isFrozen = false;
+            speed = originalSpeed;
+            // 解冻时禁用冰冻效果
+            if (frostEffect) {
+                frostEffect->setEnabled(false);
+            }
+        }
     }
     if (!isAttacking) {
         attackedRX -= speed;
@@ -211,9 +227,45 @@ void ZombieInstance::crushDie()
     }))->start();
 }
 
-void ZombieInstance::getPea(int attack, int direction)
+void ZombieInstance::boomDie()
+{
+    if (goingDie)
+        return;
+    goingDie = true;
+    hp = 0;
+    // 播放灰烬死亡动画
+    if (frostEffect) {
+        frostEffect->setEnabled(false);
+    }
+    shadowPNG->setPixmap(QPixmap());
+    picture->stop();
+    picture->setMovie(zombieProtoType->boomDieGif);
+    picture->start();
+    (new Timer(picture, 2000, [this] {
+        zombieProtoType->scene->zombieDie(this);
+    }))->start();
+}
+
+void ZombieInstance::getPea(int attack, int direction, int bKind)
 {
     playNormalballAudio();
+    if (bKind == -1 && altitude > 0) {
+        // 寒冰豌豆减速效果：速度减半，持续10秒
+        if (!isFrozen) {
+            originalSpeed = this->speed;
+            speed = originalSpeed * 0.5;
+            isFrozen = true;
+        }
+        freezeTimer = 10000;
+        // 冰冻蓝色视觉效果 - 创建一次，复用
+        if (!frostEffect) {
+            frostEffect = new QGraphicsColorizeEffect;
+            frostEffect->setColor(QColor(100, 180, 255));
+            frostEffect->setStrength(0.5);
+            picture->setGraphicsEffect(frostEffect);
+        }
+        frostEffect->setEnabled(true);
+    }
     getHit(attack);
 }
 
@@ -393,7 +445,203 @@ PoleVaultingZombie::PoleVaultingZombie()
     beAttackedPointR = 260;
     level = 2;
     sunNum = 75;
-    
+    QString path = "Zombies/PoleVaultingZombie/";
+    cardGif = "Card/Zombies/PoleVaultingZombie.png";
+    staticGif = path + "0.gif";
+    normalGif = path + "PoleVaultingZombieWalk.gif";
+    attackGif = path + "PoleVaultingZombieAttack.gif";
+    lostHeadGif = path + "PoleVaultingZombieLostHeadWalk.gif";
+    lostHeadAttackGif = path + "PoleVaultingZombieLostHeadAttack.gif";
+    headGif = path + "PoleVaultingZombieHead.gif";
+    dieGif = path + "PoleVaultingZombieDie.gif";
+    boomDieGif = path + "BoomDie.gif";
+    standGif = path + "1.gif";
+}
+
+PoleVaultingZombieInstance::PoleVaultingZombieInstance(const Zombie *zombie)
+    : ZombieInstance(zombie), hasPole(true), jumping(false),
+      poleVaultMusic(new QMediaPlayer(picture))
+{
+    this->normalGif = zombie->normalGif;
+    this->attackGif = zombie->attackGif;
+    poleVaultMusic->setMedia(QUrl("qrc:/audio/polevault.mp3"));
+}
+
+void PoleVaultingZombieInstance::checkActs()
+{
+    if (hp < 1) return;
+    // 处理冰冻减速计时器
+    if (isFrozen) {
+        freezeTimer -= 100;
+        if (freezeTimer <= 0) {
+            isFrozen = false;
+            speed = originalSpeed;
+            if (frostEffect) {
+                frostEffect->setEnabled(false);
+            }
+        }
+    }
+    // 撑杆跳：跳过第一个植物
+    if (hasPole && !jumping) {
+        int col = zombieProtoType->scene->getCoordinate().getCol(ZX);
+        if (col >= 1 && col <= 9) {
+            auto plants = zombieProtoType->scene->getPlant(col, row);
+            for (auto plant: plants.values()) {
+                if (plant->plantProtoType->canEat && plant->attackedRX >= ZX && plant->attackedLX <= ZX) {
+                    jumping = true;
+                    hasPole = false;
+                    poleVaultMusic->stop();
+                    poleVaultMusic->play();
+                    // 跳跃动画并跳过植物
+                    picture->setMovie("Zombies/PoleVaultingZombie/PoleVaultingZombieJump.gif");
+                    picture->start();
+                    (new Timer(picture, 800, [this] {
+                        jumping = false;
+                        // 跳到植物前方
+                        ZX = attackedLX -= 80;
+                        X -= 80;
+                        attackedRX -= 80;
+                        picture->setX(X);
+                        picture->setMovie(zombieProtoType->normalGif);
+                        picture->start();
+                        this->normalGif = zombieProtoType->normalGif;
+                        this->attackGif = zombieProtoType->attackGif;
+                    }))->start();
+                    return;
+                }
+            }
+        }
+    }
+    if (beAttacked && !isAttacking) {
+        judgeAttack();
+    }
+    if (!isAttacking && !jumping) {
+        attackedRX -= speed;
+        ZX = attackedLX -= speed;
+        X -= speed;
+        picture->setX(X);
+        if (attackedRX < -50) {
+            zombieProtoType->scene->zombieDie(this);
+        }
+        else if (attackedRX < 100) {
+            // TODO: Lose
+        }
+    }
+}
+
+void PoleVaultingZombieInstance::playNormalballAudio()
+{
+    ZombieInstance::playNormalballAudio();
+}
+
+// ========== 读报僵尸 (NewspaperZombie) ==========
+NewspaperZombie::NewspaperZombie()
+{
+    eName = "oNewspaperZombie";
+    cName = tr("Newspaper Zombie");
+    hp = 270;
+    ornHp = 200;
+    speed = 1.5;
+    level = 2;
+    sunNum = 75;
+    QString path = "Zombies/NewspaperZombie/";
+    cardGif = "Card/Zombies/NewspaperZombie.png";
+    staticGif = path + "0.gif";
+    normalGif = path + "HeadWalk0.gif";
+    attackGif = path + "HeadAttack0.gif";
+    ornLostNormalGif = path + "LostNewspaper.gif";
+    ornLostAttackGif = path + "LostHeadAttack0.gif";
+    headGif = path + "Head.gif";
+    dieGif = path + "Die.gif";
+    boomDieGif = path + "BoomDie.gif";
+    standGif = path + "1.gif";
+}
+
+NewspaperZombieInstance::NewspaperZombieInstance(const Zombie *zombie)
+    : OrnZombieInstance1(zombie), isAngry(false),
+      angryMusic(new QMediaPlayer(picture))
+{
+    angryMusic->setMedia(QUrl("qrc:/audio/newspaper_rarrgh2.mp3"));
+}
+
+void NewspaperZombieInstance::getHit(int attack)
+{
+    if (hasOrnaments) {
+        ornHp -= attack;
+        if (ornHp < 1) {
+            hp += ornHp;
+            hasOrnaments = false;
+            // 报纸被破坏，进入愤怒状态：速度翻倍
+            if (!isAngry) {
+                isAngry = true;
+                this->speed *= 2.0;
+                originalSpeed = this->speed;
+                angryMusic->stop();
+                angryMusic->play();
+            }
+            normalGif = getZombieProtoType()->ornLostNormalGif;
+            attackGif = getZombieProtoType()->ornLostAttackGif;
+            picture->setMovie(isAttacking ? attackGif : normalGif);
+            picture->start();
+        }
+        picture->setOpacity(0.5);
+        (new Timer(picture, 100, [this] {
+            picture->setOpacity(1);
+        }))->start();
+    }
+    else
+        ZombieInstance::getHit(attack);
+}
+
+void NewspaperZombieInstance::playNormalballAudio()
+{
+    if (hasOrnaments) {
+        hitMusic->stop();
+        hitMusic->setMedia(QUrl("qrc:/audio/plastichit.mp3"));
+        hitMusic->play();
+    }
+    else
+        OrnZombieInstance1::playNormalballAudio();
+}
+
+// ========== 橄榄球僵尸 (FootballZombie) ==========
+FootballZombie::FootballZombie()
+{
+    eName = "oFootballZombie";
+    cName = tr("Football Zombie");
+    hp = 270;
+    ornHp = 1400;
+    speed = 2.5;
+    level = 4;
+    sunNum = 175;
+    QString path = "Zombies/FootballZombie/";
+    cardGif = "Card/Zombies/FootballZombie.png";
+    staticGif = path + "0.gif";
+    normalGif = path + "FootballZombie.gif";
+    attackGif = path + "FootballZombieAttack.gif";
+    ornLostNormalGif = path + "FootballZombieOrnLost.gif";
+    ornLostAttackGif = path + "FootballZombieOrnLostAttack.gif";
+    boomDieGif = path + "BoomDie.gif";
+    standGif = path + "1.gif";
+}
+
+FootballZombieInstance::FootballZombieInstance(const Zombie *zombie)
+    : OrnZombieInstance1(zombie)
+{
+}
+
+void FootballZombieInstance::playNormalballAudio()
+{
+    if (hasOrnaments) {
+        hitMusic->stop();
+        if (qrand() % 2)
+            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
+        else
+            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
+        hitMusic->play();
+    }
+    else
+        OrnZombieInstance1::playNormalballAudio();
 }
 
 Zombie *ZombieFactory(GameScene *scene, const QString &ename)
@@ -411,6 +659,12 @@ Zombie *ZombieFactory(GameScene *scene, const QString &ename)
         zombie = new ConeheadZombie;
     if (ename == "oBucketheadZombie")
         zombie = new BucketheadZombie;
+    if (ename == "oPoleVaultingZombie")
+        zombie = new PoleVaultingZombie;
+    if (ename == "oNewspaperZombie")
+        zombie = new NewspaperZombie;
+    if (ename == "oFootballZombie")
+        zombie = new FootballZombie;
     if (zombie) {
         zombie->scene = scene;
         zombie->update();
@@ -424,6 +678,12 @@ ZombieInstance *ZombieInstanceFactory(const Zombie *zombie)
         return new ConeheadZombieInstance(zombie);
     if (zombie->eName == "oBucketheadZombie")
         return new BucketheadZombieInstance(zombie);
+    if (zombie->eName == "oPoleVaultingZombie")
+        return new PoleVaultingZombieInstance(zombie);
+    if (zombie->eName == "oNewspaperZombie")
+        return new NewspaperZombieInstance(zombie);
+    if (zombie->eName == "oFootballZombie")
+        return new FootballZombieInstance(zombie);
     return new ZombieInstance(zombie);
 }
 

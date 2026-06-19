@@ -66,8 +66,9 @@ GameLevelData_1::GameLevelData_1()
     showScroll = true;
     eName = "1";
     cName = tr("Level 1-1");
-    pName = { "oPeashooter", "oSnowPea", "oSunflower", "oWallNut" };
-    zombieData = { { "oZombie3", 1, 1, {} }, { "oConeheadZombie", 3, 3, {} }, { "oBucketheadZombie", 3, 3, {} } };
+    pName = { "oPeashooter", "oSnowPea", "oRepeater", "oCherryBomb", "oPotatoMine", "oSunflower", "oWallNut" };
+    zombieData = { { "oZombie3", 1, 1, {} }, { "oConeheadZombie", 3, 3, {} }, { "oBucketheadZombie", 3, 3, {} },
+                   { "oPoleVaultingZombie", 2, 5, {} }, { "oNewspaperZombie", 2, 7, {} }, { "oFootballZombie", 1, 9, {} } };
     flagNum = 10;
     largeWaveFlag = { 10 };
     flagToSumNum = QPair<QList<int>, QList<int> >({ 3, 5, 9 }, { 1, 2, 3, 15 });

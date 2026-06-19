@@ -345,8 +345,8 @@ void PeashooterInstance::normalAttack(ZombieInstance *zombieInstance)
     (new Bullet(plantProtoType->scene, 0, row, attackedLX, attackedLX - 40, picture->y() + 3, picture->zValue() + 2, 0))->start();
 }
 
-Bullet::Bullet(GameScene *scene, int type, int row, qreal from, qreal x, qreal y, qreal zvalue, int direction)
-        : scene(scene), type(type), row(row), direction(direction), from(from)
+Bullet::Bullet(GameScene *scene, int type, int row, qreal from, qreal x, qreal y, qreal zvalue, int direction, int bKind)
+        : scene(scene), type(type), row(row), direction(direction), from(from), bKind(bKind)
 {
     count = 0;
     picture = new QGraphicsPixmapItem(gImageCache->load(QString("Plants/PB%1%2.gif").arg(type).arg(direction)));
@@ -372,7 +372,7 @@ void Bullet::move()
         scene->addItem(picture);
     int col = scene->getCoordinate().getCol(from);
     QMap<int, PlantInstance *> plants = scene->getPlant(col, row);
-    if (type < 1 && plants.contains(1) && plants[1]->plantProtoType->eName == "oTorchwood") {
+    if (type == 0 && plants.contains(1) && plants[1]->plantProtoType->eName == "oTorchwood") {
         ++type;
         picture->setPixmap(gImageCache->load(QString("Plants/PB%1%2.gif").arg(type).arg(direction)));
     }
@@ -389,7 +389,7 @@ void Bullet::move()
     // TODO: another direction
     if (zombie && zombie->altitude == 1) {
         // TODO: other attacks
-        zombie->getPea(20, direction);
+        zombie->getPea(20, direction, bKind);
         picture->setPos(picture->pos() + QPointF(28, 0));
         picture->setPixmap(gImageCache->load("Plants/PeaBulletHit.gif"));
         (new Timer(scene, 100, [this] {
@@ -409,6 +409,205 @@ void Bullet::move()
     }
 }
 
+SnowPeaInstance::SnowPeaInstance(const Plant *plant)
+    : PlantInstance(plant), firePea(new QMediaPlayer(picture))
+{
+    firePea->setMedia(QUrl("qrc:/audio/firepea.mp3"));
+}
+
+void SnowPeaInstance::normalAttack(ZombieInstance *zombieInstance)
+{
+    firePea->play();
+    // 使用 bKind=-1 表示寒冰豌豆，type=-1 对应蓝色的 PB-10.gif 子弹
+    (new Bullet(plantProtoType->scene, plantProtoType->bKind, row, attackedLX,
+                attackedLX - 40, picture->y() + 3, picture->zValue() + 2, 0, plantProtoType->bKind))->start();
+}
+
+// ========== 双发射手 (Repeater) ==========
+Repeater::Repeater()
+{
+    eName = "oRepeater";
+    cName = tr("Repeater");
+    beAttackedPointR = 51;
+    sunNum = 200;
+    coolTime = 7.5;
+    cardGif = "Card/Plants/Repeater.png";
+    staticGif = "Plants/Repeater/0.gif";
+    normalGif = "Plants/Repeater/Repeater.gif";
+    toolTip = tr("Shoots two peas at a time");
+}
+
+RepeaterInstance::RepeaterInstance(const Plant *plant)
+    : PlantInstance(plant), firePea(new QMediaPlayer(picture))
+{
+    firePea->setMedia(QUrl("qrc:/audio/firepea.mp3"));
+}
+
+void RepeaterInstance::normalAttack(ZombieInstance *zombieInstance)
+{
+    firePea->play();
+    // 发射第一颗豌豆
+    (new Bullet(plantProtoType->scene, 0, row, attackedLX,
+                attackedLX - 40, picture->y() + 3, picture->zValue() + 2, 0))->start();
+    // 短暂延迟后发射第二颗豌豆
+    (new Timer(picture, 150, [this] {
+        (new Bullet(plantProtoType->scene, 0, row, attackedLX,
+                    attackedLX - 40, picture->y() + 3, picture->zValue() + 2, 0))->start();
+    }))->start();
+}
+
+// ========== 樱桃炸弹 (CherryBomb) ==========
+CherryBomb::CherryBomb()
+{
+    eName = "oCherryBomb";
+    cName = tr("Cherry Bomb");
+    bKind = 1;
+    beAttackedPointR = 80;
+    sunNum = 150;
+    coolTime = 50;
+    canEat = false;
+    cardGif = "Card/Plants/CherryBomb.png";
+    staticGif = "Plants/CherryBomb/0.gif";
+    normalGif = "Plants/CherryBomb/CherryBomb.gif";
+    toolTip = tr("Explodes and destroys all zombies in an area");
+}
+
+CherryBombInstance::CherryBombInstance(const Plant *plant)
+    : PlantInstance(plant), boomGif("Plants/CherryBomb/Boom.gif"), exploded(false)
+{
+}
+
+void CherryBombInstance::initTrigger()
+{
+    // 樱桃炸弹放置后直接爆炸
+    QMediaPlayer *player = new QMediaPlayer(picture);
+    player->setMedia(QUrl("qrc:/audio/explosion.mp3"));
+    player->play();
+    // 先播放爆炸动画，覆盖中心区域
+    picture->setMovie(boomGif);
+    picture->setScale(2.0);
+    QPointF center = picture->pos();
+    picture->setPos(center.x() - 60, center.y() - 60);
+    picture->start();
+    (new Timer(picture, 800, [this] {
+        if (exploded) return;
+        exploded = true;
+        // 3x3 范围爆炸，消灭范围内所有僵尸（灰烬死亡）
+        GameScene *scene = plantProtoType->scene;
+        for (int r = qMax(1, row - 1); r <= qMin(5, row + 1); ++r) {
+            QList<ZombieInstance *> zombies = scene->getZombieOnRow(r);
+            for (auto zombie : zombies) {
+                if (zombie->hp > 0 && !zombie->goingDie) {
+                    int zCol = scene->getCoordinate().getCol(zombie->ZX);
+                    if (zCol >= col - 1 && zCol <= col + 1) {
+                        zombie->boomDie();
+                    }
+                }
+            }
+        }
+        scene->plantDie(this);
+    }))->start();
+}
+
+void CherryBombInstance::triggerCheck(ZombieInstance *, Trigger *)
+{
+    // 樱桃炸弹不需要触发检测
+}
+
+// ========== 土豆雷 (PotatoMine) ==========
+PotatoMine::PotatoMine()
+{
+    eName = "oPotatoMine";
+    cName = tr("Potato Mine");
+    beAttackedPointR = 47;
+    sunNum = 25;
+    coolTime = 30;
+    canEat = false;
+    cardGif = "Card/Plants/PotatoMine.png";
+    staticGif = "Plants/PotatoMine/0.gif";
+    normalGif = "Plants/PotatoMine/PotatoMine.gif";
+    toolTip = tr("Sneaks up and explodes when a zombie steps on it");
+}
+
+PotatoMineInstance::PotatoMineInstance(const Plant *plant)
+    : PlantInstance(plant),
+      notReadyGif("Plants/PotatoMine/PotatoMineNotReady.gif"),
+      mashGif("Plants/PotatoMine/PotatoMine_mashed.gif"),
+      explosionGif("Plants/PotatoMine/ExplosionSpudow.gif"),
+      isArmed(false), exploded(false)
+{
+    // 初始显示未准备状态
+    picture->setMovie(notReadyGif);
+}
+
+void PotatoMineInstance::initTrigger()
+{
+    // 15秒后准备就绪，先播放发芽动画再切换
+    (new Timer(picture, 15000, [this] {
+        if (exploded) return;
+        isArmed = true;
+        // 播放发芽动画（土壤隆起效果）
+        MoviePixmapItem *growEffect = new MoviePixmapItem("interface/GrowSoil.gif");
+        growEffect->setPos(picture->x() - 20, picture->y() - 20);
+        growEffect->setZValue(picture->zValue() + 1);
+        plantProtoType->scene->addToGame(growEffect);
+        growEffect->start();
+        (new Timer(picture, 600, [this, growEffect] {
+            growEffect->deleteLater();
+            // 切换为已准备状态
+            picture->setMovie(plantProtoType->normalGif);
+            picture->start();
+        }))->start();
+    }))->start();
+    // 设置触发区
+    Trigger *trigger = new Trigger(this, attackedLX, attackedRX, 0, 0);
+    triggers.insert(row, QList<Trigger *>{ trigger });
+    plantProtoType->scene->addTrigger(row, trigger);
+}
+
+void PotatoMineInstance::triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger)
+{
+    Q_UNUSED(trigger);
+    if (exploded || !isArmed || zombieInstance->altitude <= 0) return;
+    canTrigger = false;
+    normalAttack(zombieInstance);
+}
+
+void PotatoMineInstance::normalAttack(ZombieInstance *zombieInstance)
+{
+    Q_UNUSED(zombieInstance);
+    if (exploded) return;
+    exploded = true;
+    QMediaPlayer *player = new QMediaPlayer(picture);
+    player->setMedia(QUrl("qrc:/audio/potato_mine.mp3"));
+    player->play();
+    // 第一阶段：土豆被压扁的动画
+    picture->setMovie(mashGif);
+    picture->start();
+    // 第二阶段：爆炸动画，消灭周围僵尸（灰烬死亡）
+    (new Timer(picture, 400, [this] {
+        picture->setMovie(explosionGif);
+        picture->setScale(1.5);
+        QPointF center = picture->pos();
+        picture->setPos(center.x() - 30, center.y() - 30);
+        picture->start();
+        (new Timer(picture, 600, [this] {
+            // 消灭触发行上的僵尸（灰烬死亡）
+            GameScene *scene = plantProtoType->scene;
+            QList<ZombieInstance *> zombies = scene->getZombieOnRow(row);
+            for (auto zombie : zombies) {
+                if (zombie->hp > 0 && !zombie->goingDie) {
+                    int zCol = scene->getCoordinate().getCol(zombie->ZX);
+                    if (zCol >= col - 1 && zCol <= col + 1) {
+                        zombie->boomDie();
+                    }
+                }
+            }
+            scene->plantDie(this);
+        }))->start();
+    }))->start();
+}
+
 Plant *PlantFactory(GameScene *scene, const QString &eName)
 {
     Plant *plant = nullptr;
@@ -416,6 +615,12 @@ Plant *PlantFactory(GameScene *scene, const QString &eName)
         plant = new Peashooter;
     else if (eName == "oSnowPea")
         plant = new SnowPea;
+    else if (eName == "oRepeater")
+        plant = new Repeater;
+    else if (eName == "oCherryBomb")
+        plant = new CherryBomb;
+    else if (eName == "oPotatoMine")
+        plant = new PotatoMine;
     else if (eName == "oSunflower")
         plant = new SunFlower;
     else if (eName == "oWallNut")
@@ -435,6 +640,14 @@ PlantInstance *PlantInstanceFactory(const Plant *plant)
 {
     if (plant->eName == "oPeashooter")
         return new PeashooterInstance(plant);
+    if (plant->eName == "oSnowPea")
+        return new SnowPeaInstance(plant);
+    if (plant->eName == "oRepeater")
+        return new RepeaterInstance(plant);
+    if (plant->eName == "oCherryBomb")
+        return new CherryBombInstance(plant);
+    if (plant->eName == "oPotatoMine")
+        return new PotatoMineInstance(plant);
     if (plant->eName == "oSunflower")
         return new SunFlowerInstance(plant);
     if (plant->eName == "oWallNut")

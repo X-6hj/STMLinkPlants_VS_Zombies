@@ -93,6 +93,15 @@ public:
     SnowPea();
 };
 
+class SnowPeaInstance: public PlantInstance
+{
+public:
+    SnowPeaInstance(const Plant *plant);
+    virtual void normalAttack(ZombieInstance *zombieInstance);
+private:
+    QMediaPlayer *firePea;
+};
+
 class SunFlower: public Plant
 {
     Q_DECLARE_TR_FUNCTIONS(SunFlower)
@@ -152,17 +161,74 @@ public:
     PoolCleaner();
 };
 
+// ========== 新增植物: 双发射手 (Repeater) ==========
+class Repeater: public Peashooter
+{
+    Q_DECLARE_TR_FUNCTIONS(Repeater)
+public:
+    Repeater();
+};
+
+class RepeaterInstance: public PlantInstance
+{
+public:
+    RepeaterInstance(const Plant *plant);
+    virtual void normalAttack(ZombieInstance *zombieInstance);
+private:
+    QMediaPlayer *firePea;
+};
+
+// ========== 新增植物: 樱桃炸弹 (CherryBomb) ==========
+class CherryBomb: public Plant
+{
+    Q_DECLARE_TR_FUNCTIONS(CherryBomb)
+public:
+    CherryBomb();
+};
+
+class CherryBombInstance: public PlantInstance
+{
+public:
+    CherryBombInstance(const Plant *plant);
+    virtual void initTrigger();
+    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger);
+private:
+    QString boomGif;
+    bool exploded;
+};
+
+// ========== 新增植物: 土豆雷 (PotatoMine) ==========
+class PotatoMine: public Plant
+{
+    Q_DECLARE_TR_FUNCTIONS(PotatoMine)
+public:
+    PotatoMine();
+};
+
+class PotatoMineInstance: public PlantInstance
+{
+public:
+    PotatoMineInstance(const Plant *plant);
+    virtual void initTrigger();
+    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger);
+    virtual void normalAttack(ZombieInstance *zombieInstance);
+private:
+    QString notReadyGif, mashGif, explosionGif;
+    bool isArmed;
+    bool exploded;
+};
+
 class Bullet
 {
 public:
-    Bullet(GameScene *scene, int type, int row, qreal from, qreal x, qreal y, qreal zvalue,  int direction);
+    Bullet(GameScene *scene, int type, int row, qreal from, qreal x, qreal y, qreal zvalue,  int direction, int bKind = 0);
     ~Bullet();
     void start();
 private:
     void move();
 
     GameScene *scene;
-    int count, type, row, direction;
+    int count, type, row, direction, bKind;
     qreal from;
     QGraphicsPixmapItem *picture;
 };
