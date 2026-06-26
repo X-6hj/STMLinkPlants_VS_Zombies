@@ -30,7 +30,18 @@ public:
     virtual bool eventFilter(QObject *watched, QEvent *event) override;
 
     void loadReady();
+
+protected:
+    virtual void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
+
+signals:
+    void mousePress(QGraphicsSceneMouseEvent *event);
 private:
+    void showLevelPanel();
+    void hideLevelPanel();
+    void showOptionsPanel();
+    void hideOptionsPanel();
+
     QGraphicsPixmapItem *background;
     QGraphicsPixmapItem *adventureShadow;
     HoverChangedPixmapItem *adventureButton;
@@ -43,10 +54,22 @@ private:
     QGraphicsPixmapItem *woodSign3;
     MoviePixmapItem *zombieHand;
     MouseEventRectItem *quitButton;
+    MouseEventRectItem *optionsButton;
     TextItemWithoutBorder *usernameText;
+
+    // Level selection popup
+    QGraphicsPixmapItem *levelPanel;
+    QList<MouseEventRectItem *> levelButtons;
+    QList<QGraphicsSimpleTextItem *> levelButtonTexts;
+
+    // Options popup
+    QGraphicsPixmapItem *optionsPanel;
 
     QMediaPlayer *backgroundMusic;
     QMediaPlayer *buttonBleep;
+
+    QMetaObject::Connection levelPanelOutsideConn;
+    QMetaObject::Connection optionsPanelOutsideConn;
 };
 
 #endif //PLANTS_VS_ZOMBIES_MENUSCENE_H

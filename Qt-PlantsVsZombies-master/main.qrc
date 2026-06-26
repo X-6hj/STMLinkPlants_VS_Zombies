@@ -24,6 +24,12 @@
         <file>images/interface/Sun.gif</file>
         <file>images/interface/Shovel.png</file>
         <file>images/interface/ShovelBack.png</file>
+        <file>images/interface/OptionsMenuback8.png</file>
+        <file>images/interface/ZombiesWon.png</file>
+        <file>images/interface/trophy.png</file>
+        <file>images/interface/Almanac_IndexButton.png</file>
+        <file>images/interface/Almanac_IndexBack.png</file>
+        <file>images/interface/Almanac_CloseButton.png</file>
         <!-- Flag -->
         <file>images/interface/FlagMeterEmpty.png</file>
         <file>images/interface/FlagMeterFull.png</file>
@@ -32,10 +38,11 @@
         <file>images/interface/FlagMeterParts2.png</file>
         <!-- Level -->
         <file>images/interface/background1.jpg</file>
-        <file>images/interface/background2.jpg</file>
         <file>images/interface/background1unsodded.jpg</file>
         <file>images/interface/background1unsodded1.jpg</file>
         <file>images/interface/background1unsodded2.jpg</file>
+        <file>images/interface/background2.jpg</file>
+        <file>images/interface/background3.jpg</file>
         <file>images/interface/PrepareGrowPlants.png</file>
         <!-- Plants -->
         <file>images/interface/plantShadow.png</file>
@@ -45,23 +52,44 @@
         <file>images/Plants/PB11.gif</file>
         <file>images/Plants/PB-10.gif</file>
         <file>images/Plants/PeaBulletHit.gif</file>
+        <file>images/Plants/ShroomBullet.gif</file>
+        <file>images/Plants/ShroomBulletHit.gif</file>
+        <file>images/Plants/FumeShroom/FumeShroomBullet.gif</file>
         <!-- Card -->
         <file>images/Card/Plants/Peashooter.png</file>
-        <file>images/Card/Plants/SnowPea.png</file>
         <file>images/Card/Plants/Repeater.png</file>
-        <file>images/Card/Plants/CherryBomb.png</file>
-        <file>images/Card/Plants/PotatoMine.png</file>
+        <file>images/Card/Plants/GatlingPea.png</file>
+        <file>images/Card/Plants/PuffShroom.png</file>
+        <file>images/Card/Plants/ScaredyShroom.png</file>
+        <file>images/Card/Plants/FumeShroom.png</file>
+        <file>images/Card/Plants/SnowPea.png</file>
         <file>images/Card/Plants/SunFlower.png</file>
         <file>images/Card/Plants/WallNut.png</file>
+        <file>images/Card/Plants/CherryBomb.png</file>
+        <file>images/Card/Plants/PotatoMine.png</file>
         <!-- Peashooter -->
         <file>images/Plants/Peashooter/0.gif</file>
         <file>images/Plants/Peashooter/Peashooter.gif</file>
-        <!-- Snow Pea -->
-        <file>images/Plants/SnowPea/0.gif</file>
-        <file>images/Plants/SnowPea/SnowPea.gif</file>
         <!-- Repeater -->
         <file>images/Plants/Repeater/0.gif</file>
         <file>images/Plants/Repeater/Repeater.gif</file>
+        <!-- GatlingPea -->
+        <file>images/Plants/GatlingPea/0.gif</file>
+        <file>images/Plants/GatlingPea/GatlingPea.gif</file>
+        <!-- PuffShroom -->
+        <file>images/Plants/PuffShroom/PuffShroom.gif</file>
+        <file>images/Plants/PuffShroom/PuffShroomSleep.gif</file>
+        <!-- ScaredyShroom -->
+        <file>images/Plants/ScaredyShroom/ScaredyShroom.gif</file>
+        <file>images/Plants/ScaredyShroom/ScaredyShroomCry.gif</file>
+        <file>images/Plants/ScaredyShroom/ScaredyShroomSleep.gif</file>
+        <!-- FumeShroom -->
+        <file>images/Plants/FumeShroom/FumeShroom.gif</file>
+        <file>images/Plants/FumeShroom/FumeShroomAttack.gif</file>
+        <file>images/Plants/FumeShroom/FumeShroomSleep.gif</file>
+        <!-- Snow Pea -->
+        <file>images/Plants/SnowPea/0.gif</file>
+        <file>images/Plants/SnowPea/SnowPea.gif</file>
         <!-- CherryBomb -->
         <file>images/Plants/CherryBomb/0.gif</file>
         <file>images/Plants/CherryBomb/CherryBomb.gif</file>
@@ -108,42 +136,21 @@
         <file>images/Zombies/FlagZombie/FlagZombieLostHead.gif</file>
         <file>images/Zombies/FlagZombie/FlagZombieLostHeadAttack.gif</file>
         <file>images/Zombies/FlagZombie/1.gif</file>
+        <file>images/Zombies/FlagZombie/BoomDie.gif</file>
         <!-- Conehead Zombie -->
         <file>images/Card/Zombies/ConeheadZombie.png</file>
         <file>images/Zombies/ConeheadZombie/0.gif</file>
         <file>images/Zombies/ConeheadZombie/ConeheadZombie.gif</file>
         <file>images/Zombies/ConeheadZombie/ConeheadZombieAttack.gif</file>
         <file>images/Zombies/ConeheadZombie/1.gif</file>
+        <file>images/Zombies/ConeheadZombie/BoomDie.gif</file>
         <!-- Buckethead Zombie -->
         <file>images/Card/Zombies/BucketheadZombie.png</file>
         <file>images/Zombies/BucketheadZombie/0.gif</file>
         <file>images/Zombies/BucketheadZombie/BucketheadZombie.gif</file>
         <file>images/Zombies/BucketheadZombie/BucketheadZombieAttack.gif</file>
         <file>images/Zombies/BucketheadZombie/1.gif</file>
-        <!-- PoleVaulting Zombie -->
-        <file>images/Card/Zombies/PoleVaultingZombie.png</file>
-        <file>images/Zombies/PoleVaultingZombie/0.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombie.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieWalk.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieAttack.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieJump.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieLostHeadWalk.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieLostHeadAttack.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieHead.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieDie.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/BoomDie.gif</file>
-        <file>images/Zombies/PoleVaultingZombie/1.gif</file>
-        <!-- Newspaper Zombie -->
-        <file>images/Card/Zombies/NewspaperZombie.png</file>
-        <file>images/Zombies/NewspaperZombie/0.gif</file>
-        <file>images/Zombies/NewspaperZombie/HeadWalk0.gif</file>
-        <file>images/Zombies/NewspaperZombie/HeadAttack0.gif</file>
-        <file>images/Zombies/NewspaperZombie/LostNewspaper.gif</file>
-        <file>images/Zombies/NewspaperZombie/LostHeadAttack0.gif</file>
-        <file>images/Zombies/NewspaperZombie/Head.gif</file>
-        <file>images/Zombies/NewspaperZombie/Die.gif</file>
-        <file>images/Zombies/NewspaperZombie/BoomDie.gif</file>
-        <file>images/Zombies/NewspaperZombie/1.gif</file>
+        <file>images/Zombies/BucketheadZombie/BoomDie.gif</file>
         <!-- Football Zombie -->
         <file>images/Card/Zombies/FootballZombie.png</file>
         <file>images/Zombies/FootballZombie/0.gif</file>
@@ -153,6 +160,138 @@
         <file>images/Zombies/FootballZombie/FootballZombieOrnLostAttack.gif</file>
         <file>images/Zombies/FootballZombie/BoomDie.gif</file>
         <file>images/Zombies/FootballZombie/1.gif</file>
+        <!-- Backup Dancer -->
+        <file>images/Zombies/BackupDancer/0.gif</file>
+        <file>images/Zombies/BackupDancer/Attack.gif</file>
+        <file>images/Zombies/BackupDancer/BackupDancer.gif</file>
+        <file>images/Zombies/BackupDancer/BoomDie.gif</file>
+        <file>images/Zombies/BackupDancer/Die.gif</file>
+        <file>images/Zombies/BackupDancer/Head.gif</file>
+        <file>images/Zombies/BackupDancer/LostHead.gif</file>
+        <file>images/Zombies/BackupDancer/LostHeadAttack.gif</file>
+        <file>images/Zombies/BackupDancer/LostHeadDancing.gif</file>
+        <file>images/Zombies/BackupDancer/Mound.gif</file>
+        <!-- Dancing Zombie -->
+        <file>images/Zombies/DancingZombie/0.gif</file>
+        <file>images/Zombies/DancingZombie/Attack.gif</file>
+        <file>images/Zombies/DancingZombie/BoomDie.gif</file>
+        <file>images/Zombies/DancingZombie/Dancing.gif</file>
+        <file>images/Zombies/DancingZombie/DancingZombie.gif</file>
+        <file>images/Zombies/DancingZombie/Die.gif</file>
+        <file>images/Zombies/DancingZombie/Head.gif</file>
+        <file>images/Zombies/DancingZombie/LostHead.gif</file>
+        <file>images/Zombies/DancingZombie/LostHeadAttack.gif</file>
+        <file>images/Zombies/DancingZombie/LostHeadDancing.gif</file>
+        <file>images/Zombies/DancingZombie/LostHeadSlidingStep.gif</file>
+        <file>images/Zombies/DancingZombie/LostHeadSummon.gif</file>
+        <file>images/Zombies/DancingZombie/SlidingStep.gif</file>
+        <file>images/Zombies/DancingZombie/spotlight.png</file>
+        <file>images/Zombies/DancingZombie/spotlight2.png</file>
+        <file>images/Zombies/DancingZombie/spotlight2_8.png</file>
+        <file>images/Zombies/DancingZombie/spotlight_8.png</file>
+        <file>images/Zombies/DancingZombie/Summon.gif</file>
+        <file>images/Zombies/DancingZombie/Summon1.gif</file>
+        <file>images/Zombies/DancingZombie/Summon2.gif</file>
+        <file>images/Zombies/DancingZombie/Summon3.gif</file>
+        <!-- Imp -->
+        <file>images/Zombies/Imp/0.gif</file>
+        <file>images/Zombies/Imp/1.gif</file>
+        <file>images/Zombies/Imp/Attack.gif</file>
+        <file>images/Zombies/Imp/BoomDie.gif</file>
+        <file>images/Zombies/Imp/Die.gif</file>
+        <!-- Jack-in-the-Box Zombie -->
+        <file>images/Zombies/JackinTheBoxZombie/0.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/1.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/Attack.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/Boom.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/BoomDie.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/Die.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/GoOut.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/LostHead.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/LostHeadAttack.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/OpenBox.gif</file>
+        <file>images/Zombies/JackinTheBoxZombie/Walk.gif</file>
+        <!-- Newspaper Zombie -->
+        <file>images/Zombies/NewspaperZombie/0.gif</file>
+        <file>images/Zombies/NewspaperZombie/1.gif</file>
+        <file>images/Zombies/NewspaperZombie/BoomDie.gif</file>
+        <file>images/Zombies/NewspaperZombie/Die.gif</file>
+        <file>images/Zombies/NewspaperZombie/Head.gif</file>
+        <file>images/Zombies/NewspaperZombie/HeadAttack0.gif</file>
+        <file>images/Zombies/NewspaperZombie/HeadAttack1.gif</file>
+        <file>images/Zombies/NewspaperZombie/HeadWalk0.gif</file>
+        <file>images/Zombies/NewspaperZombie/HeadWalk1.gif</file>
+        <file>images/Zombies/NewspaperZombie/LostHeadAttack0.gif</file>
+        <file>images/Zombies/NewspaperZombie/LostHeadAttack1.gif</file>
+        <file>images/Zombies/NewspaperZombie/LostHeadWalk0.gif</file>
+        <file>images/Zombies/NewspaperZombie/LostHeadWalk1.gif</file>
+        <file>images/Zombies/NewspaperZombie/LostNewspaper.gif</file>
+        <!-- Pole Vaulting Zombie -->
+        <file>images/Zombies/PoleVaultingZombie/0.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/1.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/BoomDie.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombie.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieAttack.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieDie.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieHead.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieJump.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieJump2.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieLostHead.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieLostHeadAttack.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieLostHeadWalk.gif</file>
+        <file>images/Zombies/PoleVaultingZombie/PoleVaultingZombieWalk.gif</file>
+        <!-- Zomboni -->
+        <file>images/Zombies/Zomboni/0.gif</file>
+        <file>images/Zombies/Zomboni/1.gif</file>
+        <file>images/Zombies/Zomboni/2.gif</file>
+        <file>images/Zombies/Zomboni/3.gif</file>
+        <file>images/Zombies/Zomboni/4.gif</file>
+        <file>images/Zombies/Zomboni/5.gif</file>
+        <file>images/Zombies/Zomboni/BoomDie.gif</file>
+        <file>images/Zombies/Zomboni/ice.png</file>
+        <file>images/Zombies/Zomboni/ice_cap.png</file>
+        <!-- ScreenDoorZombie -->
+        <file>images/Zombies/ScreenDoorZombie/0.gif</file>
+        <file>images/Zombies/ScreenDoorZombie/1.gif</file>
+        <file>images/Zombies/ScreenDoorZombie/HeadAttack1.gif</file>
+        <file>images/Zombies/ScreenDoorZombie/HeadWalk1.gif</file>
+        <file>images/Zombies/ScreenDoorZombie/LostHeadAttack1.gif</file>
+        <file>images/Zombies/ScreenDoorZombie/LostHeadWalk1.gif</file>
+        <file>images/Zombies/ScreenDoorZombie/ScreenDoorZombie.gif</file>
+        <file>images/Zombies/ScreenDoorZombie/ScreenDoorZombieAttack.gif</file>
+        <!-- SnorkelZombie -->
+        <file>images/Zombies/SnorkelZombie/0.gif</file>
+        <file>images/Zombies/SnorkelZombie/1.gif</file>
+        <file>images/Zombies/SnorkelZombie/Attack.gif</file>
+        <file>images/Zombies/SnorkelZombie/Die.gif</file>
+        <file>images/Zombies/SnorkelZombie/Head.gif</file>
+        <file>images/Zombies/SnorkelZombie/Jump.gif</file>
+        <file>images/Zombies/SnorkelZombie/Risk.gif</file>
+        <file>images/Zombies/SnorkelZombie/Sink.gif</file>
+        <file>images/Zombies/SnorkelZombie/Walk1.gif</file>
+        <file>images/Zombies/SnorkelZombie/Walk2.gif</file>
+        <!-- DolphinRiderZombie -->
+        <file>images/Zombies/DolphinRiderZombie/0.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/1.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Attack.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Die.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Die2.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Head.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Jump.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Jump2.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Jump3.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Walk1.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Walk2.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Walk3.gif</file>
+        <file>images/Zombies/DolphinRiderZombie/Walk4.gif</file>
+        <!-- Card Zombies -->
+        <file>images/Card/Zombies/BackupDancer.png</file>
+        <file>images/Card/Zombies/DancingZombie.png</file>
+        <file>images/Card/Zombies/DolphinRiderZombie.png</file>
+        <file>images/Card/Zombies/JackboxZombie.png</file>
+        <file>images/Card/Zombies/ScreenDoorZombie.png</file>
+        <file>images/Card/Zombies/SnorkelZombie.png</file>
+        <file>images/Card/Zombies/Zomboni.png</file>
         <!-- Translations -->
         <file>translations/main.zh_CN.qm</file>
         <!-- Music -->
@@ -161,7 +300,6 @@
         <file>audio/tap.mp3</file>
         <file>audio/losemusic.mp3</file>
         <file>audio/Look_up_at_the_Sky.mp3</file>
-        <file>audio/Mountains.mp3</file>
         <file>audio/UraniwaNi.mp3</file>
         <file>audio/readysetplant.mp3</file>
         <file>audio/points.mp3</file>
@@ -186,6 +324,7 @@
         <file>audio/splat1.mp3</file>
         <file>audio/splat2.mp3</file>
         <file>audio/splat3.mp3</file>
+        <file>audio/cherrybomb.mp3</file>
         <file>audio/chomp.mp3</file>
         <file>audio/chompsoft.mp3</file>
         <file>audio/plastichit.mp3</file>

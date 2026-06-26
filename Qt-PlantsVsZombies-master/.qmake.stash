@@ -10,9 +10,9 @@ QMAKE_DEFAULT_LIBDIRS = \
     /usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1 \
     /usr/lib \
     /lib
-QMAKE_CXX.QT_COMPILER_STDCXX = 202002L
-QMAKE_CXX.QMAKE_GCC_MAJOR_VERSION = 16
-QMAKE_CXX.QMAKE_GCC_MINOR_VERSION = 1
+QMAKE_CXX.QT_COMPILER_STDCXX = 201402L
+QMAKE_CXX.QMAKE_GCC_MAJOR_VERSION = 7
+QMAKE_CXX.QMAKE_GCC_MINOR_VERSION = 3
 QMAKE_CXX.QMAKE_GCC_PATCH_VERSION = 0
 QMAKE_CXX.COMPILER_MACROS = \
     QT_COMPILER_STDCXX \
@@ -27,16 +27,17 @@ QMAKE_CXX.INCDIRS = \
     /usr/local/include \
     /usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include-fixed \
     /usr/include \
-    D:/w64devkitx64/install/w64devkit/lib/gcc/x86_64-w64-mingw32/16.1.0/include/c++ \
-    D:/w64devkitx64/install/w64devkit/lib/gcc/x86_64-w64-mingw32/16.1.0/include/c++/x86_64-w64-mingw32 \
-    D:/w64devkitx64/install/w64devkit/lib/gcc/x86_64-w64-mingw32/16.1.0/include/c++/backward \
-    D:/w64devkitx64/install/w64devkit/lib/gcc/x86_64-w64-mingw32/16.1.0/include \
-    D:/w64devkitx64/install/w64devkit/lib/gcc/x86_64-w64-mingw32/16.1.0/include-fixed \
-    D:/w64devkitx64/install/w64devkit/include
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++ \
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++/x86_64-w64-mingw32 \
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include/c++/backward \
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include \
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0/include-fixed \
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/x86_64-w64-mingw32/include
 QMAKE_CXX.LIBDIRS = \
     /usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1 \
     /usr/lib \
     /lib \
-    D:/w64devkitx64/install/w64devkit/lib/gcc/x86_64-w64-mingw32/16.1.0 \
-    D:/w64devkitx64/install/w64devkit/lib/gcc \
-    D:/w64devkitx64/install/w64devkit/lib
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/lib/gcc/x86_64-w64-mingw32/7.3.0 \
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/lib/gcc \
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/x86_64-w64-mingw32/lib \
+    C:/Qt/Qt5.14.2/Tools/mingw730_64/lib

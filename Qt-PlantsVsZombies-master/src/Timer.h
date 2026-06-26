@@ -8,6 +8,9 @@
 
 #include <QtCore>
 
+// 全局暂停标志
+extern bool gPaused;
+
 // Just for convenience
 class Timer: public QTimer
 {

@@ -16,6 +16,7 @@ class Plant;
 class PlantInstance;
 class Zombie;
 class GameLevelData;
+class LevelManager;
 class MouseEventPixmapItem;
 class MoviePixmapItem;
 class PlantCardItem;
@@ -75,6 +76,10 @@ public:
     void plantDie(PlantInstance *plant);
     void zombieDie(ZombieInstance *zombie);
 
+    // 暂停/恢复游戏
+    void setPaused(bool paused);
+    bool isPaused() const;
+
     Plant *getPlantProtoType(const QString &eName);
     Zombie *getZombieProtoType(const QString &eName);
 
@@ -91,6 +96,8 @@ public:
     Coordinate &getCoordinate();
 
     void addTrigger(int row, Trigger *trigger);
+    void addCrater(int col, int row);
+    void addZombie(ZombieInstance *zombie);
 
 protected:
     void letsGo();
@@ -119,6 +126,8 @@ private:
     QGraphicsSimpleTextItem *infoText;
     QGraphicsRectItem *infoTextGroup;
     MouseEventPixmapItem *menuGroup;
+    QGraphicsItemGroup *menuPopup;
+    QGraphicsPixmapItem *menuPopupBack;
     QGraphicsSimpleTextItem *sunNumText;
     QGraphicsPixmapItem *sunNumGroup;
     MouseEventPixmapItem *selectCardButtonReset, *selectCardButtonOkay;
@@ -167,10 +176,18 @@ private:
 
     int choose, sunNum;
     QTimer *waveTimer;
+    QTimer *monitorTimer;  // 主游戏循环定时器（用于暂停）
     int waveNum;
+    bool paused;  // 游戏暂停状态
 
     bool isNightMode;
     QPointF backgroundPos;
+
+    LevelManager *levelManager;
+public:
+    int getWaveNum() const;
+    int getFlagNum() const;
+    LevelManager *getLevelManager() const;
 };
 
 #endif //PLANTS_VS_ZOMBIES_GAMESCENE_H

@@ -102,7 +102,67 @@
     <message>
         <location filename="../src/Plant.cpp" line="143"/>
         <source>Shoots peas at zombies</source>
-        <translation>想敌人射出豌豆</translation>
+        <translation>向敌人射出豌豆</translation>
+    </message>
+</context>
+<context>
+    <name>Repeater</name>
+    <message>
+        <location filename="../src/Plant.cpp" line="182"/>
+        <source>双发射手</source>
+        <translation>双发射手</translation>
+    </message>
+    <message>
+        <location filename="../src/Plant.cpp" line="190"/>
+        <source>双发射手可以一次发射两颗豌豆&lt;br/&gt;伤害：中等（每颗）&lt;br/&gt;发射速度：两倍&lt;br/&gt;&lt;br/&gt;
+双发射手很凶悍，他是在街头混大的。他不在乎任何人的看法，无论是植物还是僵尸，他打出豌豆，是为了让别人离他远点。其实呢，双发射手一直暗暗地渴望着爱情。</source>
+        <translation>双发射手可以一次发射两颗豌豆&lt;br/&gt;伤害：中等（每颗）&lt;br/&gt;发射速度：两倍&lt;br/&gt;&lt;br/&gt;
+双发射手很凶悍，他是在街头混大的。他不在乎任何人的看法，无论是植物还是僵尸，他打出豌豆，是为了让别人离他远点。其实呢，双发射手一直暗暗地渴望着爱情。</translation>
+    </message>
+</context>
+<context>
+    <name>GatlingPea</name>
+    <message>
+        <location filename="../src/Plant.cpp" line="213"/>
+        <source>机枪射手</source>
+        <translation>机枪射手</translation>
+    </message>
+    <message>
+        <location filename="../src/Plant.cpp" line="220"/>
+        <source>机枪射手一次可以发射四颗豌豆&lt;br/&gt;伤害：重型（每颗）&lt;br/&gt;发射速度：四倍&lt;br/&gt;&lt;br/&gt;
+机枪射手喜欢大声说话，尤其是用他的加特林机枪。他是植物大军里最受敬重的战士之一，虽然有时候他激动起来会把子弹打得到处都是。</source>
+        <translation>机枪射手一次可以发射四颗豌豆&lt;br/&gt;伤害：重型（每颗）&lt;br/&gt;发射速度：四倍&lt;br/&gt;&lt;br/&gt;
+机枪射手喜欢大声说话，尤其是用他的加特林机枪。他是植物大军里最受敬重的战士之一，虽然有时候他激动起来会把子弹打得到处都是。</translation>
+    </message>
+</context>
+<context>
+    <name>PuffShroom</name>
+    <message>
+        <location filename="../src/Plant.cpp" line="249"/>
+        <source>小喷菇</source>
+        <translation>小喷菇</translation>
+    </message>
+    <message>
+        <location filename="../src/Plant.cpp" line="258"/>
+        <source>小喷菇是夜间植物，白天会睡觉&lt;br/&gt;伤害：中等&lt;br/&gt;射程：短&lt;br/&gt;花费：0&lt;br/&gt;&lt;br/&gt;
+小喷菇是新手的好朋友。它们虽然个子小，射程也短，但是它们完全免费，可以大批量种植。不过白天它们就顶不住打瞌睡了。</source>
+        <translation>小喷菇是夜间植物，白天会睡觉&lt;br/&gt;伤害：中等&lt;br/&gt;射程：短&lt;br/&gt;花费：0&lt;br/&gt;&lt;br/&gt;
+小喷菇是新手的好朋友。它们虽然个子小，射程也短，但是它们完全免费，可以大批量种植。不过白天它们就顶不住打瞌睡了。</translation>
+    </message>
+</context>
+<context>
+    <name>ScaredyShroom</name>
+    <message>
+        <location filename="../src/Plant.cpp" line="316"/>
+        <source>胆小菇</source>
+        <translation>胆小菇</translation>
+    </message>
+    <message>
+        <location filename="../src/Plant.cpp" line="325"/>
+        <source>胆小菇是夜间植物，白天会睡觉&lt;br/&gt;伤害：中等&lt;br/&gt;射程：全屏&lt;br/&gt;花费：25&lt;br/&gt;特性：僵尸靠近时会停止攻击&lt;br/&gt;&lt;br/&gt;
+胆小菇胆子很小，一有僵尸靠近就吓得缩成一团不敢攻击。不过它的视力很好，远处的僵尸能被它看得一清二楚。</source>
+        <translation>胆小菇是夜间植物，白天会睡觉&lt;br/&gt;伤害：中等&lt;br/&gt;射程：全屏&lt;br/&gt;花费：25&lt;br/&gt;特性：僵尸靠近时会停止攻击&lt;br/&gt;&lt;br/&gt;
+胆小菇胆子很小，一有僵尸靠近就吓得缩成一团不敢攻击。不过它的视力很好，远处的僵尸能被它看得一清二楚。</translation>
     </message>
 </context>
 <context>

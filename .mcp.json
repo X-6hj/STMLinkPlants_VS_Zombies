@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "hermes-wsl": {
+      "command": "wsl.exe",
+      "args": [
+        "bash",
+        "-l",
+        "-c",
+        "/home/huang/.hermes-mcp-venv/bin/python /home/huang/.hermes-wsl-mcp-server.py"
+      ]
+    }
+  }
+}

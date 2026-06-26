@@ -60,11 +60,18 @@ public:
     GameLevelData_1();
 };
 
-class GameLevelData_Night: public GameLevelData
+class GameLevelData_2: public GameLevelData
 {
-    Q_DECLARE_TR_FUNCTIONS(GameLevelData_Night)
+    Q_DECLARE_TR_FUNCTIONS(GameLevelData_2)
 public:
-    GameLevelData_Night();
+    GameLevelData_2();
+};
+
+class GameLevelData_3: public GameLevelData
+{
+    Q_DECLARE_TR_FUNCTIONS(GameLevelData_3)
+public:
+    GameLevelData_3();
 };
 
 GameLevelData * GameLevelDataFactory(const QString &eName);

@@ -81,7 +81,7 @@ class PeashooterInstance: public PlantInstance
 public:
     PeashooterInstance(const Plant *plant);
     virtual void normalAttack(ZombieInstance *zombieInstance);
-private:
+protected:
     QString bulletGif, bulletHitGif;
     QMediaPlayer *firePea;
 };
@@ -93,13 +93,107 @@ public:
     SnowPea();
 };
 
-class SnowPeaInstance: public PlantInstance
+class SnowPeaInstance: public PeashooterInstance
 {
 public:
     SnowPeaInstance(const Plant *plant);
     virtual void normalAttack(ZombieInstance *zombieInstance);
+};
+
+// 双射豌豆射手（Repeater）：在短时间内发射两颗豌豆
+class Repeater: public Peashooter
+{
+    Q_DECLARE_TR_FUNCTIONS(Repeater)
+public:
+    Repeater();
+};
+
+class RepeaterInstance: public PeashooterInstance
+{
+public:
+    RepeaterInstance(const Plant *plant);
+    virtual void normalAttack(ZombieInstance *zombieInstance) override;
+};
+
+// 机枪射手（GatlingPea）：一次发射四颗豌豆
+class GatlingPea: public Peashooter
+{
+    Q_DECLARE_TR_FUNCTIONS(GatlingPea)
+public:
+    GatlingPea();
+};
+
+class GatlingPeaInstance: public PeashooterInstance
+{
+public:
+    GatlingPeaInstance(const Plant *plant);
+    virtual void normalAttack(ZombieInstance *zombieInstance) override;
+};
+
+// 小喷菇（PuffShroom）：夜间植物，白天睡觉，短程攻击，免费
+class PuffShroom: public Peashooter
+{
+    Q_DECLARE_TR_FUNCTIONS(PuffShroom)
+public:
+    PuffShroom();
+};
+
+class PuffShroomInstance: public PeashooterInstance
+{
+public:
+    PuffShroomInstance(const Plant *plant);
+    virtual void birth(int c, int r) override;
+    virtual void initTrigger() override;
+    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger) override;
+    virtual void normalAttack(ZombieInstance *zombieInstance) override;
+protected:
+    QString sleepGif;
+    bool isDaytime();
+};
+
+// 胆小菇（ScaredyShroom）：夜间植物，白天睡觉，全屏攻击，僵尸靠近时停止攻击并哭泣
+class ScaredyShroom: public Peashooter
+{
+    Q_DECLARE_TR_FUNCTIONS(ScaredyShroom)
+public:
+    ScaredyShroom();
+};
+
+class ScaredyShroomInstance: public PuffShroomInstance
+{
+public:
+    ScaredyShroomInstance(const Plant *plant);
+    virtual void initTrigger() override;
+    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger) override;
+    virtual void normalAttack(ZombieInstance *zombieInstance) override;
+    virtual void getHurt(ZombieInstance *zombie, int aKind, int attack) override;
 private:
-    QMediaPlayer *firePea;
+    QString cryGif;
+    bool isScared() const;
+    void enterScared();
+    void exitScared();
+    bool m_scared;
+};
+
+// 大喷菇（FumeShroom）：夜间植物，4格范围喷射毒气，攻击动画与子弹同步
+class FumeShroom: public Peashooter
+{
+    Q_DECLARE_TR_FUNCTIONS(FumeShroom)
+public:
+    FumeShroom();
+};
+
+class FumeShroomInstance: public PuffShroomInstance
+{
+public:
+    FumeShroomInstance(const Plant *plant);
+    virtual void birth(int c, int r) override;
+    virtual void initTrigger() override;
+    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger) override;
+    virtual void normalAttack(ZombieInstance *zombieInstance) override;
+private:
+    QString attackGif;
+    QString bulletGif;
 };
 
 class SunFlower: public Plant
@@ -145,6 +239,21 @@ public:
     LawnCleaner();
 };
 
+class CherryBomb: public Plant
+{
+    Q_DECLARE_TR_FUNCTIONS(CherryBomb)
+public:
+    CherryBomb();
+};
+
+class CherryBombInstance: public PlantInstance
+{
+public:
+    CherryBombInstance(const Plant *plant);
+    virtual void initTrigger() override;
+    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger) override;
+};
+
 class LawnCleanerInstance: public PlantInstance
 {
 public:
@@ -161,43 +270,6 @@ public:
     PoolCleaner();
 };
 
-// ========== 新增植物: 双发射手 (Repeater) ==========
-class Repeater: public Peashooter
-{
-    Q_DECLARE_TR_FUNCTIONS(Repeater)
-public:
-    Repeater();
-};
-
-class RepeaterInstance: public PlantInstance
-{
-public:
-    RepeaterInstance(const Plant *plant);
-    virtual void normalAttack(ZombieInstance *zombieInstance);
-private:
-    QMediaPlayer *firePea;
-};
-
-// ========== 新增植物: 樱桃炸弹 (CherryBomb) ==========
-class CherryBomb: public Plant
-{
-    Q_DECLARE_TR_FUNCTIONS(CherryBomb)
-public:
-    CherryBomb();
-};
-
-class CherryBombInstance: public PlantInstance
-{
-public:
-    CherryBombInstance(const Plant *plant);
-    virtual void initTrigger();
-    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger);
-private:
-    QString boomGif;
-    bool exploded;
-};
-
-// ========== 新增植物: 土豆雷 (PotatoMine) ==========
 class PotatoMine: public Plant
 {
     Q_DECLARE_TR_FUNCTIONS(PotatoMine)
@@ -209,9 +281,10 @@ class PotatoMineInstance: public PlantInstance
 {
 public:
     PotatoMineInstance(const Plant *plant);
-    virtual void initTrigger();
-    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger);
-    virtual void normalAttack(ZombieInstance *zombieInstance);
+    virtual void birth(int c, int r) override;
+    virtual void initTrigger() override;
+    virtual void triggerCheck(ZombieInstance *zombieInstance, Trigger *trigger) override;
+    virtual void normalAttack(ZombieInstance *zombieInstance) override;
 private:
     QString notReadyGif, mashGif, explosionGif;
     bool isArmed;
@@ -221,14 +294,14 @@ private:
 class Bullet
 {
 public:
-    Bullet(GameScene *scene, int type, int row, qreal from, qreal x, qreal y, qreal zvalue,  int direction, int bKind = 0);
+    Bullet(GameScene *scene, int type, int row, qreal from, qreal x, qreal y, qreal zvalue,  int direction);
     ~Bullet();
     void start();
 private:
     void move();
 
     GameScene *scene;
-    int count, type, row, direction, bKind;
+    int count, type, row, direction;
     qreal from;
     QGraphicsPixmapItem *picture;
 };
