@@ -879,8 +879,11 @@ void Bullet::move()
     ZombieInstance *zombie = nullptr;
     if (direction == 0) {
         QList<ZombieInstance *> zombies = scene->getZombieOnRow(row);
-        for (auto iter = zombies.end(); iter-- != zombies.begin() && (*iter)->attackedLX <= from;) {
-            if ((*iter)->hp > 0 && (*iter)->attackedRX >= from) {
+        for (auto iter = zombies.end(); iter-- != zombies.begin();) {
+            // 子弹向左飞，检查子弹当前位置 `from` 是否在僵尸攻击框内
+            qreal zLeft = qMin((*iter)->attackedLX, (*iter)->attackedRX);
+            qreal zRight = qMax((*iter)->attackedLX, (*iter)->attackedRX);
+            if ((*iter)->hp > 0 && !(*iter)->goingDie && zLeft <= from && zRight >= from && (*iter)->altitude >= 0) {
                 zombie = *iter;
                 break;
             }

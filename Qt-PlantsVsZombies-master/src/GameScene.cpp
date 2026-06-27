@@ -250,6 +250,7 @@ GameScene::GameScene(GameLevelData *gameLevelData)
             tapMusic->stop(); tapMusic->play();
             menuPopup->setVisible(false);
             backgroundMusic->stop();
+            gPaused = false;  // 重置全局暂停标志，避免新场景定时器卡死
             gMainView->switchToMenuScene();
         });
 

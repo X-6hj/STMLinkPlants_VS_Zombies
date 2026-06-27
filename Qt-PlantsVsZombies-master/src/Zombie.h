@@ -288,6 +288,7 @@ class BackupDancerInstance: public ZombieInstance
 {
 public:
     BackupDancerInstance(const Zombie *zombie);
+    virtual void birth(int row) override;
 };
 
 // ---------- 潜水僵尸 ----------
@@ -326,6 +327,58 @@ public:
 private:
     bool jumped;
     int jumpTimer;
+};
+
+// ---------- 小鬼僵尸 ----------
+class Imp: public Zombie1
+{
+    Q_DECLARE_TR_FUNCTIONS(Imp)
+public:
+    Imp();
+};
+
+class ImpInstance: public ZombieInstance
+{
+public:
+    ImpInstance(const Zombie *zombie);
+};
+
+// ---------- 鸭子僵尸 ----------
+class DuckyTubeZombie1: public Zombie1
+{
+    Q_DECLARE_TR_FUNCTIONS(DuckyTubeZombie1)
+public:
+    DuckyTubeZombie1();
+};
+
+// ---------- 路障鸭子僵尸 ----------
+class DuckyTubeZombie2: public OrnZombie1
+{
+    Q_DECLARE_TR_FUNCTIONS(DuckyTubeZombie2)
+public:
+    DuckyTubeZombie2();
+};
+
+class DuckyTubeZombie2Instance: public OrnZombieInstance1
+{
+public:
+    DuckyTubeZombie2Instance(const Zombie *zombie);
+    virtual void playNormalballAudio() override;
+};
+
+// ---------- 铁桶鸭子僵尸 ----------
+class DuckyTubeZombie3: public OrnZombie1
+{
+    Q_DECLARE_TR_FUNCTIONS(DuckyTubeZombie3)
+public:
+    DuckyTubeZombie3();
+};
+
+class DuckyTubeZombie3Instance: public OrnZombieInstance1
+{
+public:
+    DuckyTubeZombie3Instance(const Zombie *zombie);
+    virtual void playNormalballAudio() override;
 };
 
 // ---------- 冰车僵尸 ----------

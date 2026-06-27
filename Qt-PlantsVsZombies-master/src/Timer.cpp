@@ -14,11 +14,9 @@ Timer::Timer(QObject *parent, int timeout, std::function<void(void)> functor) : 
     setSingleShot(true);
     connect(this, &Timer::timeout, [this, functor, timeout, parent] {
         if (gPaused && timeout > 0) {
-            // 暂停中：重新调度，稍后执行
-            if (parent) {
-                (new Timer(parent, timeout, functor))->start();
-            }
-            deleteLater();
+            // 暂停中：定时器保持当前对象，重新启动等待恢复后执行
+            // 不创建新对象防止长时间暂停时内存泄漏（用户点击菜单久留不回）
+            this->start();
             return;
         }
         functor();
@@ -36,12 +34,24 @@ TimeLine::TimeLine(QObject *parent, int duration, int interval, std::function<vo
     setUpdateInterval(interval);
     setCurveShape(shape);
     connect(this, &TimeLine::valueChanged, [onChanged](qreal val) {
-        if (gPaused) return;  // 暂停时跳过更新
         onChanged(val);
     });
     connect(this, &TimeLine::finished, [this, onFinished] {
-        if (gPaused) return;  // 暂停时跳过完成回调（TimeLine 会继续运行）
         onFinished();
         deleteLater();
     });
+
+    // 监听全局暂停标志，正确暂停/恢复 QTimeLine 内部计时
+    QTimer *pauseWatcher = new QTimer(this);
+    pauseWatcher->setInterval(100);
+    connect(pauseWatcher, &QTimer::timeout, [this] {
+        if (gPaused) {
+            if (state() == Running)
+                setPaused(true);
+        } else {
+            if (state() == Paused)
+                setPaused(false);
+        }
+    });
+    pauseWatcher->start();
 }

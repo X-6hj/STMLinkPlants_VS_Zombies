@@ -91,7 +91,11 @@ GameLevelData_1::GameLevelData_1()
                    { "oDancingZombie", 1, 2, {} },
                    { "oSnorkelZombie", 2, 1, {} },
                    { "oDolphinRiderZombie", 2, 1, {} },
-                   { "oZomboni", 1, 3, {} } };
+                   { "oZomboni", 1, 3, {} },
+                   { "oImp", 3, 1, {} },
+                   { "oDuckyTubeZombie1", 2, 1, {} },
+                   { "oDuckyTubeZombie2", 2, 1, {} },
+                   { "oDuckyTubeZombie3", 2, 1, {} } };
     flagNum = 8;  // 【测试】原值: 10
     largeWaveFlag = { 8 };  // 【测试】原值: { 10 }
     // 【测试】原值: ({ 3, 5, 9 }, { 1, 2, 3, 15 })
@@ -123,7 +127,11 @@ GameLevelData_2::GameLevelData_2()
                    { "oDancingZombie", 1, 2, {} },
                    { "oSnorkelZombie", 2, 1, {} },
                    { "oDolphinRiderZombie", 2, 1, {} },
-                   { "oZomboni", 1, 3, {} } };
+                   { "oZomboni", 1, 3, {} },
+                   { "oImp", 3, 1, {} },
+                   { "oDuckyTubeZombie1", 2, 1, {} },
+                   { "oDuckyTubeZombie2", 2, 1, {} },
+                   { "oDuckyTubeZombie3", 2, 1, {} } };
     flagNum = 8;  // 【测试】原值: 12
     largeWaveFlag = { 8 };  // 【测试】原值: { 12 }
     // 【测试】原值: ({ 3, 5, 7, 9 }, { 1, 2, 3, 4, 20 })
@@ -153,7 +161,11 @@ GameLevelData_3::GameLevelData_3()
                    { "oDancingZombie", 1, 2, {} },
                    { "oSnorkelZombie", 2, 1, {} },
                    { "oDolphinRiderZombie", 2, 1, {} },
-                   { "oZomboni", 1, 3, {} } };
+                   { "oZomboni", 1, 3, {} },
+                   { "oImp", 3, 1, {} },
+                   { "oDuckyTubeZombie1", 2, 1, {} },
+                   { "oDuckyTubeZombie2", 2, 1, {} },
+                   { "oDuckyTubeZombie3", 2, 1, {} } };
     flagNum = 10;  // 【测试】原值: 15
     largeWaveFlag = { 8, 10 };  // 【测试】原值: { 8, 15 }
     // 【测试】原值: ({ 3, 5, 7, 9, 11, 13 }, { 1, 2, 3, 4, 5, 6, 30 })

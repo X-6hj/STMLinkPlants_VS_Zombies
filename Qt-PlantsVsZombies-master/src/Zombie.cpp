@@ -77,7 +77,7 @@ FlagZombie::FlagZombie()
     hp = 270;
     damagePoint1 = hp * 2 / 3;  // std1 = 180
     speed = 2.2;
-    beAttackedPointR = 101;
+    beAttackedPointR = 160;
     breakPoint = 90;  // std2 = 90
     QString path = "Zombies/FlagZombie/";
     cardGif = "Card/Zombies/FlagZombie.png";
@@ -122,7 +122,7 @@ void ZombieInstance::birth(int row)
     picture->setPos(X, coordinate.getY(row) - zombieProtoType->height - 10);
     picture->setZValue(3 * row + 1);
     shadowPNG = new QGraphicsPixmapItem(gImageCache->load("interface/plantShadow.png"));
-    shadowPNG->setPos(zombieProtoType->beAttackedPointL - 10, zombieProtoType->height - 22);
+    shadowPNG->setPos(zombieProtoType->width * 0.5 - 48, zombieProtoType->height - 22);
     shadowPNG->setFlag(QGraphicsItem::ItemStacksBehindParent);
     shadowPNG->setParentItem(picture);
     picture->start();
@@ -857,7 +857,7 @@ JackinTheBoxZombie::JackinTheBoxZombie()
     level = 3;
     sunNum = 100;
     beAttackedPointL = 80;
-    beAttackedPointR = 30;
+    beAttackedPointR = 160;
     breakPoint = 90;
     QString path = "Zombies/JackinTheBoxZombie/";
     cardGif = "Card/Zombies/JackboxZombie.png";
@@ -951,19 +951,23 @@ DancingZombie::DancingZombie()
     level = 4;
     sunNum = 150;
     beAttackedPointL = 80;
-    beAttackedPointR = 30;
+    beAttackedPointR = 160;
     breakPoint = 90;
     QString path = "Zombies/DancingZombie/";
     cardGif = "Card/Zombies/DancingZombie.png";
     staticGif = path + "0.gif";
-    normalGif = path + "Dancing.gif";
+    // 初始使用太空滑步动画
+    normalGif = path + "SlidingStep.gif";
     attackGif = path + "Attack.gif";
+    // 损伤阶段使用不同的滑步动画
+    damageGif1 = path + "DancingZombie1.gif";
+    damageAttackGif1 = path + "Attack.gif";
     lostHeadGif = path + "LostHead.gif";
     lostHeadAttackGif = path + "LostHeadAttack.gif";
     headGif = path + "Head.gif";
     dieGif = path + "Die.gif";
     boomDieGif = path + "BoomDie.gif";
-    standGif = path + "0.gif"; // no 1.gif in folder
+    standGif = path + "0.gif";
 }
 
 DancingZombieInstance::DancingZombieInstance(const Zombie *zombie)
@@ -971,6 +975,8 @@ DancingZombieInstance::DancingZombieInstance(const Zombie *zombie)
 {
     // 原版：初始太空滑步速度(约1.2s/格)，召唤后降速(约5.5s/格)
     speed = 6.5; // 初始快速前进
+    // 初始使用滑步动画
+    this->normalGif = "Zombies/DancingZombie/SlidingStep.gif";
 }
 
 void DancingZombieInstance::spawnAllBackupDancers()
@@ -980,14 +986,30 @@ void DancingZombieInstance::spawnAllBackupDancers()
     Zombie *backupProto = scene->getZombieProtoType("oBackupDancer");
     if (!backupProto) return;
 
+    // 播放召唤动画
+    picture->setMovie("Zombies/DancingZombie/Summon.gif");
+    picture->start();
+
+    // 显示聚光灯效果
+    QGraphicsPixmapItem *spotlight = new QGraphicsPixmapItem(
+        gImageCache->load("Zombies/DancingZombie/spotlight.png"));
+    spotlight->setPos(picture->x() - 80, picture->y() - 120);
+    spotlight->setZValue(picture->zValue() + 0.5);
+    spotlight->setOpacity(0.6);
+    scene->addToGame(spotlight);
+    (new Timer(scene, 1500, [spotlight] {
+        if (spotlight->scene())
+            spotlight->scene()->removeItem(spotlight);
+        delete spotlight;
+    }))->start();
+
     // 原版：在舞王僵尸的上下左右各召唤一个伴舞
-    // 游戏中只有一行，所以在上行、下行、后方(2个不同x位置)放置
     int targetRows[] = { row - 1, row + 1, row, row };
     qreal xOffsets[] = { 0, 0, -100, -50 };
     for (int i = 0; i < 4; ++i) {
         int r = targetRows[i];
         if (r < 1 || r > scene->getGameLevelData()->LF.size()) continue;
-        if (scene->getGameLevelData()->LF[r-1] != 1) continue; // 只放在可行走行
+        if (scene->getGameLevelData()->LF[r-1] != 1) continue;
         ZombieInstance *backup = ZombieInstanceFactory(backupProto);
         backup->birth(r);
         backup->X = X + xOffsets[i];
@@ -999,6 +1021,19 @@ void DancingZombieInstance::spawnAllBackupDancers()
         scene->addZombie(backup);
         backupDancerUuids.append(backup->uuid);
     }
+
+    // 召唤动画结束后切换到舞蹈动画
+    QUuid myUuid = uuid;
+    (new Timer(picture, 1200, [this, myUuid] {
+        ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+        if (!self || self != this || goingDie) return;
+        QString dancingGif = "Zombies/DancingZombie/Dancing.gif";
+        this->normalGif = dancingGif;
+        if (!isAttacking) {
+            picture->setMovie(dancingGif);
+            picture->start();
+        }
+    }))->start();
 }
 
 void DancingZombieInstance::checkActs()
@@ -1030,13 +1065,10 @@ void DancingZombieInstance::checkActs()
                 danceTimer = 0;
             }
         } else {
-            // 召唤后，每走4步集体舞蹈一次(用计时器模拟)
+            // 召唤后，周期性检查伴舞补充
             danceTimer++;
             if (danceTimer > 40) {
                 danceTimer = 0;
-                // 原版：舞蹈动作
-                picture->setMovie(zombieProtoType->normalGif);
-                picture->start();
                 // 清理已死亡的伴舞UUID
                 GameScene *scene = zombieProtoType->scene;
                 for (int i = backupDancerUuids.size() - 1; i >= 0; --i) {
@@ -1044,7 +1076,7 @@ void DancingZombieInstance::checkActs()
                         backupDancerUuids.removeAt(i);
                     }
                 }
-                // 检查伴舞是否减员，减员则补充（每200帧约6-7秒最多补充一次，避免刷屏崩溃）
+                // 检查伴舞是否减员，减员则补充（每200帧约6-7秒最多补充一次）
                 replenishCooldown++;
                 int aliveDancers = backupDancerUuids.size();
                 if (aliveDancers < 4 && replenishCooldown > 200) {
@@ -1099,12 +1131,11 @@ BackupDancer::BackupDancer()
     eName = "oBackupDancer";
     cName = tr("伴舞僵尸");
     hp = 270;
-    damagePoint1 = hp * 2 / 3;  // std1 = 180
+    damagePoint1 = hp * 2 / 3;  // 180
     speed = 1.2;
-    level = 1;
-    sunNum = 25;
+    sunNum = 0;
     beAttackedPointL = 80;
-    beAttackedPointR = 30;
+    beAttackedPointR = 140;
     breakPoint = 90;  // std2 = 90
     QString path = "Zombies/BackupDancer/";
     cardGif = "Card/Zombies/BackupDancer.png";
@@ -1122,7 +1153,38 @@ BackupDancer::BackupDancer()
 
 BackupDancerInstance::BackupDancerInstance(const Zombie *zombie)
     : ZombieInstance(zombie)
-{}
+{
+    this->normalGif = zombie->normalGif;
+}
+
+void BackupDancerInstance::birth(int row)
+{
+    // 先调用基类birth设置位置和阴影
+    ZX = attackedLX = zombieProtoType->scene->getCoordinate().getX(11);
+    X = attackedLX - zombieProtoType->beAttackedPointL;
+    attackedRX = X + zombieProtoType->beAttackedPointR;
+    this->row = row;
+
+    Coordinate &coordinate = zombieProtoType->scene->getCoordinate();
+    picture->setPos(X, coordinate.getY(row) - zombieProtoType->height - 10);
+    picture->setZValue(3 * row + 1);
+    shadowPNG = new QGraphicsPixmapItem(gImageCache->load("interface/plantShadow.png"));
+    shadowPNG->setPos(zombieProtoType->width * 0.5 - 48, zombieProtoType->height - 22);
+    shadowPNG->setFlag(QGraphicsItem::ItemStacksBehindParent);
+    shadowPNG->setParentItem(picture);
+    zombieProtoType->scene->addToGame(picture);
+
+    // 播放Mound出场动画，出场后切换到正常行走
+    picture->setMovie("Zombies/BackupDancer/Mound.gif");
+    picture->start();
+    QUuid myUuid = uuid;
+    (new Timer(picture, 800, [this, myUuid] {
+        ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+        if (!self || self != this || goingDie) return;
+        picture->setMovie("Zombies/BackupDancer/BackupDancer.gif");
+        picture->start();
+    }))->start();
+}
 
 // ===================== 潜水僵尸 =====================
 SnorkelZombie::SnorkelZombie()
@@ -1130,12 +1192,12 @@ SnorkelZombie::SnorkelZombie()
     eName = "oSnorkelZombie";
     cName = tr("潜水僵尸");
     hp = 270;
-    damagePoint1 = hp * 2 / 3;  // std1 = 180
+    damagePoint1 = hp * 2 / 3;  // 180
     speed = 1.5;
     level = 2;
     sunNum = 50;
     beAttackedPointL = 80;
-    beAttackedPointR = 30;
+    beAttackedPointR = 160;
     breakPoint = 90;  // std2 = 90
     QString path = "Zombies/SnorkelZombie/";
     cardGif = "Card/Zombies/SnorkelZombie.png";
@@ -1228,7 +1290,7 @@ DolphinRiderZombie::DolphinRiderZombie()
     level = 2;
     sunNum = 75;
     beAttackedPointL = 120;
-    beAttackedPointR = 160;
+    beAttackedPointR = 240;
     breakPoint = 90;  // std2 = 90
     QString path = "Zombies/DolphinRiderZombie/";
     cardGif = "Card/Zombies/DolphinRiderZombie.png";
@@ -1298,6 +1360,154 @@ void DolphinRiderZombieInstance::checkActs()
     }
 }
 
+// ===================== 小鬼僵尸 =====================
+Imp::Imp()
+{
+    eName = "oImp";
+    cName = tr("小鬼僵尸");
+    hp = 190;
+    damagePoint1 = hp * 2 / 3;  // 126
+    speed = 1.5;
+    level = 1;
+    sunNum = 25;
+    beAttackedPointL = 60;
+    beAttackedPointR = 120;
+    breakPoint = 90;
+    QString path = "Zombies/Imp/";
+    cardGif = "Card/Zombies/Imp.png";
+    staticGif = path + "0.gif";
+    normalGif = path + "1.gif";
+    attackGif = path + "Attack.gif";
+    // Imp没有断头动画，使用基础僵尸的
+    lostHeadGif = "Zombies/Zombie/ZombieLostHead.gif";
+    lostHeadAttackGif = "Zombies/Zombie/ZombieLostHeadAttack.gif";
+    headGif = "Zombies/Zombie/ZombieHead.gif";
+    dieGif = path + "Die.gif";
+    boomDieGif = path + "BoomDie.gif";
+    standGif = path + "1.gif";
+}
+
+ImpInstance::ImpInstance(const Zombie *zombie)
+    : ZombieInstance(zombie)
+{}
+
+// ===================== 鸭子僵尸 =====================
+DuckyTubeZombie1::DuckyTubeZombie1()
+{
+    eName = "oDuckyTubeZombie1";
+    cName = tr("鸭子僵尸");
+    hp = 270;
+    damagePoint1 = hp * 2 / 3;  // 180
+    speed = 1.5;
+    level = 1;
+    sunNum = 25;
+    beAttackedPointL = 80;
+    beAttackedPointR = 160;
+    breakPoint = 90;
+    QString path = "Zombies/DuckyTubeZombie1/";
+    cardGif = "Card/Zombies/DuckyTubeZombie1.png";
+    staticGif = path + "0.gif";
+    normalGif = path + "Walk1.gif";
+    attackGif = path + "Attack.gif";
+    // 损伤阶段使用Walk2.gif（鸭子管受损）
+    damageGif1 = path + "Walk2.gif";
+    damageAttackGif1 = path + "Attack.gif";
+    // 无断头动画，使用基础僵尸的
+    lostHeadGif = "Zombies/Zombie/ZombieLostHead.gif";
+    lostHeadAttackGif = "Zombies/Zombie/ZombieLostHeadAttack.gif";
+    headGif = "Zombies/Zombie/ZombieHead.gif";
+    dieGif = path + "Die.gif";
+    boomDieGif = "Zombies/Zombie/BoomDie.gif";
+    standGif = path + "1.gif";
+}
+
+// ===================== 路障鸭子僵尸 =====================
+DuckyTubeZombie2::DuckyTubeZombie2()
+{
+    eName = "oDuckyTubeZombie2";
+    cName = tr("路障鸭子僵尸");
+    hp = 270;
+    damagePoint1 = hp * 2 / 3;  // 180
+    ornHp = 370;
+    level = 2;
+    sunNum = 75;
+    breakPoint = 90;
+    QString path = "Zombies/DuckyTubeZombie2/";
+    cardGif = "Card/Zombies/DuckyTubeZombie1.png";
+    staticGif = path + "0.gif";
+    normalGif = path + "Walk1.gif";
+    attackGif = path + "Attack.gif";
+    // 本体损伤使用红色染色效果
+    ornLostNormalGif = path + "Walk2.gif";
+    ornLostAttackGif = path + "Attack.gif";
+    lostHeadGif = "Zombies/Zombie/ZombieLostHead.gif";
+    lostHeadAttackGif = "Zombies/Zombie/ZombieLostHeadAttack.gif";
+    headGif = "Zombies/Zombie/ZombieHead.gif";
+    dieGif = "Zombies/Zombie/ZombieDie.gif";
+    boomDieGif = "Zombies/Zombie/BoomDie.gif";
+    standGif = path + "1.gif";
+}
+
+DuckyTubeZombie2Instance::DuckyTubeZombie2Instance(const Zombie *zombie)
+    : OrnZombieInstance1(zombie)
+{}
+
+void DuckyTubeZombie2Instance::playNormalballAudio()
+{
+    if (hasOrnaments) {
+        hitMusic->stop();
+        hitMusic->setMedia(QUrl("qrc:/audio/plastichit.mp3"));
+        hitMusic->play();
+    }
+    else
+        OrnZombieInstance1::playNormalballAudio();
+}
+
+// ===================== 铁桶鸭子僵尸 =====================
+DuckyTubeZombie3::DuckyTubeZombie3()
+{
+    eName = "oDuckyTubeZombie3";
+    cName = tr("铁桶鸭子僵尸");
+    hp = 270;
+    damagePoint1 = hp * 2 / 3;  // 180
+    ornHp = 1100;
+    level = 3;
+    sunNum = 125;
+    breakPoint = 90;
+    QString path = "Zombies/DuckyTubeZombie3/";
+    cardGif = "Card/Zombies/DuckyTubeZombie1.png";
+    staticGif = path + "0.gif";
+    normalGif = path + "Walk1.gif";
+    attackGif = path + "Attack.gif";
+    // 本体损伤使用红色染色效果
+    ornLostNormalGif = path + "Walk2.gif";
+    ornLostAttackGif = path + "Attack.gif";
+    lostHeadGif = "Zombies/Zombie/ZombieLostHead.gif";
+    lostHeadAttackGif = "Zombies/Zombie/ZombieLostHeadAttack.gif";
+    headGif = "Zombies/Zombie/ZombieHead.gif";
+    dieGif = "Zombies/Zombie/ZombieDie.gif";
+    boomDieGif = "Zombies/Zombie/BoomDie.gif";
+    standGif = path + "1.gif";
+}
+
+DuckyTubeZombie3Instance::DuckyTubeZombie3Instance(const Zombie *zombie)
+    : OrnZombieInstance1(zombie)
+{}
+
+void DuckyTubeZombie3Instance::playNormalballAudio()
+{
+    if (hasOrnaments) {
+        hitMusic->stop();
+        if (qrand() % 2)
+            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
+        else
+            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
+        hitMusic->play();
+    }
+    else
+        OrnZombieInstance1::playNormalballAudio();
+}
+
 // ===================== 冰车僵尸 =====================
 ZomboniZombie::ZomboniZombie()
 {
@@ -1309,7 +1519,7 @@ ZomboniZombie::ZomboniZombie()
     level = 4;
     sunNum = 175;
     beAttackedPointL = 120;
-    beAttackedPointR = 160;
+    beAttackedPointR = 240;
     breakPoint = 0;
     QString path = "Zombies/Zomboni/";
     cardGif = "Card/Zombies/Zomboni.png";
@@ -1443,6 +1653,14 @@ Zombie *ZombieFactory(GameScene *scene, const QString &ename)
         zombie = new DolphinRiderZombie;
     if (ename == "oZomboni")
         zombie = new ZomboniZombie;
+    if (ename == "oImp")
+        zombie = new Imp;
+    if (ename == "oDuckyTubeZombie1")
+        zombie = new DuckyTubeZombie1;
+    if (ename == "oDuckyTubeZombie2")
+        zombie = new DuckyTubeZombie2;
+    if (ename == "oDuckyTubeZombie3")
+        zombie = new DuckyTubeZombie3;
     if (zombie) {
         zombie->scene = scene;
         zombie->update();
@@ -1476,6 +1694,12 @@ ZombieInstance *ZombieInstanceFactory(const Zombie *zombie)
         return new DolphinRiderZombieInstance(zombie);
     if (zombie->eName == "oZomboni")
         return new ZomboniZombieInstance(zombie);
+    if (zombie->eName == "oImp")
+        return new ImpInstance(zombie);
+    if (zombie->eName == "oDuckyTubeZombie2")
+        return new DuckyTubeZombie2Instance(zombie);
+    if (zombie->eName == "oDuckyTubeZombie3")
+        return new DuckyTubeZombie3Instance(zombie);
     return new ZombieInstance(zombie);
 }
 

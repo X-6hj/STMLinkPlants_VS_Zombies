@@ -194,11 +194,32 @@
         <file>images/Zombies/DancingZombie/Summon2.gif</file>
         <file>images/Zombies/DancingZombie/Summon3.gif</file>
         <!-- Imp -->
+        <file>images/Card/Zombies/Imp.png</file>
         <file>images/Zombies/Imp/0.gif</file>
         <file>images/Zombies/Imp/1.gif</file>
         <file>images/Zombies/Imp/Attack.gif</file>
         <file>images/Zombies/Imp/BoomDie.gif</file>
         <file>images/Zombies/Imp/Die.gif</file>
+        <!-- DuckyTubeZombie1 -->
+        <file>images/Card/Zombies/DuckyTubeZombie1.png</file>
+        <file>images/Zombies/DuckyTubeZombie1/0.gif</file>
+        <file>images/Zombies/DuckyTubeZombie1/1.gif</file>
+        <file>images/Zombies/DuckyTubeZombie1/Attack.gif</file>
+        <file>images/Zombies/DuckyTubeZombie1/Die.gif</file>
+        <file>images/Zombies/DuckyTubeZombie1/Walk1.gif</file>
+        <file>images/Zombies/DuckyTubeZombie1/Walk2.gif</file>
+        <!-- DuckyTubeZombie2 -->
+        <file>images/Zombies/DuckyTubeZombie2/0.gif</file>
+        <file>images/Zombies/DuckyTubeZombie2/1.gif</file>
+        <file>images/Zombies/DuckyTubeZombie2/Attack.gif</file>
+        <file>images/Zombies/DuckyTubeZombie2/Walk1.gif</file>
+        <file>images/Zombies/DuckyTubeZombie2/Walk2.gif</file>
+        <!-- DuckyTubeZombie3 -->
+        <file>images/Zombies/DuckyTubeZombie3/0.gif</file>
+        <file>images/Zombies/DuckyTubeZombie3/1.gif</file>
+        <file>images/Zombies/DuckyTubeZombie3/Attack.gif</file>
+        <file>images/Zombies/DuckyTubeZombie3/Walk1.gif</file>
+        <file>images/Zombies/DuckyTubeZombie3/Walk2.gif</file>
         <!-- Jack-in-the-Box Zombie -->
         <file>images/Zombies/JackinTheBoxZombie/0.gif</file>
         <file>images/Zombies/JackinTheBoxZombie/1.gif</file>

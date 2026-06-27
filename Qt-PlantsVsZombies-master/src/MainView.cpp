@@ -7,6 +7,7 @@
 #include "SelectorScene.h"
 #include "GameScene.h"
 #include "AspectRatioLayout.h"
+#include "Timer.h"
 #include <QSerialPortInfo>
 
 MainView *gMainView;
@@ -110,6 +111,7 @@ void MainView::switchToGameScene(const QString &eName)
 
 void MainView::switchToMenuScene()
 {
+    gPaused = false;  // 重置全局暂停标志，确保新场景定时器正常工作
     SelectorScene *newSelectorScene = new SelectorScene;
     setScene(newSelectorScene);
     if (selectorScene)
