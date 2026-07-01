@@ -1,54 +1,89 @@
 //
 // LightSensorReader implementation
+// 串口 I/O 委托给 SerialWorker（独立线程），UI 线程仅处理信号转发和夜间模式逻辑。
 //
 
 #include "LightSensorReader.h"
+#include "SerialWorker.h"
 #include <QSerialPortInfo>
 #include <QDebug>
 
-const int LightSensorReader::BAUD_RATE = 115200;
-
 LightSensorReader::LightSensorReader(QObject *parent)
     : QObject(parent),
-      serialPort(new QSerialPort(this)),
+      workerThread(new QThread(this)),
+      worker(nullptr),
       reconnectTimer(new QTimer(this)),
-      dataRegex("Light ADC:\\s*(\\d+),\\s*Voltage:\\s*([\\d.]+)V"),
       currentlyNight(false),
-      connected(false),
+      m_connected(false),
       lastAdc(0),
       lastVolts(0.0f),
       thresholdLow(1500),
-      thresholdHigh(1700)
+      thresholdHigh(1700),
+      retryCount(0)
 {
+    // 创建 SerialWorker 并移入工作线程
+    worker = new SerialWorker;  // 无父对象，将由 moveToThread 管理
+    worker->moveToThread(workerThread);
+
+    // 连接工作线程信号到主线程槽
+    connect(worker, &SerialWorker::dataReceived, this, &LightSensorReader::onWorkerDataReceived);
+    connect(worker, &SerialWorker::connectionChanged, this, &LightSensorReader::onWorkerConnectionChanged);
+    connect(worker, &SerialWorker::logMessage, this, &LightSensorReader::logMessage);
+    connect(worker, &SerialWorker::scanFinished, this, &LightSensorReader::onWorkerScanFinished);
+
+    // 清理：线程结束时删除 worker
+    connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
+
+    // 重连定时器（在主线程中运行）
     reconnectTimer->setSingleShot(false);
     reconnectTimer->setInterval(2000);
-    connect(reconnectTimer, &QTimer::timeout, this, &LightSensorReader::tryConnect);
+    connect(reconnectTimer, &QTimer::timeout, this, &LightSensorReader::tryReconnect);
 
-    connect(serialPort, &QSerialPort::readyRead, this, &LightSensorReader::onReadyRead);
-    connect(serialPort, QOverload<QSerialPort::SerialPortError>::of(&QSerialPort::error),
-            this, &LightSensorReader::onError);
+    workerThread->start();
 }
 
 LightSensorReader::~LightSensorReader()
 {
     stop();
+    workerThread->quit();
+    workerThread->wait(3000);
 }
 
-void LightSensorReader::start()
+void LightSensorReader::start(const QList<QSerialPortInfo> &knownPorts)
 {
-    tryConnect();
+    retryCount = 0;
+
+    if (qEnvironmentVariableIsSet("LIGHT_SENSOR_DISABLED")) {
+        emit logMessage(tr("Light sensor disabled by LIGHT_SENSOR_DISABLED env var"));
+        return;
+    }
+
+    const auto ports = knownPorts.isEmpty() ? QSerialPortInfo::availablePorts() : knownPorts;
+    lastKnownPorts = ports;
+
+    if (ports.isEmpty()) {
+        emit logMessage(tr("No serial ports available, light sensor disabled"));
+        return;
+    }
+
+    // 延迟启动扫描到事件循环，避免阻塞 UI 线程
+    // SerialWorker 在工作线程中执行实际的串口操作
+    QTimer::singleShot(0, this, [this, ports] {
+        QMetaObject::invokeMethod(worker, "startScan", Qt::QueuedConnection,
+                                  Q_ARG(QList<QSerialPortInfo>, ports));
+    });
     reconnectTimer->start();
 }
 
 void LightSensorReader::stop()
 {
     reconnectTimer->stop();
-    closePort();
+    QMetaObject::invokeMethod(worker, "stop", Qt::QueuedConnection);
 }
 
 bool LightSensorReader::isConnected() const
 {
-    return connected && serialPort->isOpen();
+    return m_connected;
 }
 
 bool LightSensorReader::nightMode() const
@@ -86,160 +121,18 @@ QString LightSensorReader::preferredPort() const
     return preferredPortName;
 }
 
-bool LightSensorReader::openPort(const QString &name)
+void LightSensorReader::onWorkerDataReceived(int adcValue, float voltage)
 {
-    serialPort->setPortName(name);
-    serialPort->setBaudRate(BAUD_RATE);
-    serialPort->setDataBits(QSerialPort::Data8);
-    serialPort->setParity(QSerialPort::NoParity);
-    serialPort->setStopBits(QSerialPort::OneStop);
-    serialPort->setFlowControl(QSerialPort::NoFlowControl);
+    lastAdc = adcValue;
+    lastVolts = voltage;
 
-    if (!serialPort->open(QIODevice::ReadOnly)) {
-        qDebug() << "LightSensorReader: failed to open" << name << serialPort->errorString();
-        return false;
-    }
+    emit dataReceived(adcValue, voltage);
 
-    qDebug() << "LightSensorReader: opened" << name;
-    return true;
-}
-
-void LightSensorReader::closePort()
-{
-    if (serialPort->isOpen())
-        serialPort->close();
-    if (connected) {
-        connected = false;
-        emit connectionChanged(false);
-        emit logMessage(tr("Light sensor disconnected"));
-    }
-}
-
-static bool isLikelySensorPort(const QSerialPortInfo &info)
-{
-    QString desc = info.description().toUpper();
-    QString manufacturer = info.manufacturer().toUpper();
-    return desc.contains("CH340") || desc.contains("USB-SERIAL") ||
-           manufacturer.contains("CH340") || manufacturer.contains("FTDI") ||
-           manufacturer.contains("PROLIFIC");
-}
-
-void LightSensorReader::tryConnect()
-{
-    if (isConnected())
-        return;
-
-    const auto ports = QSerialPortInfo::availablePorts();
-    if (ports.isEmpty()) {
-        emit logMessage(tr("No serial ports found"));
-        return;
-    }
-
-    // Once we know which port the sensor is on (preferred or previously
-    // successful), keep retrying only that port. Do not scan others.
-    QString targetPort = !preferredPortName.isEmpty() ? preferredPortName : lastSuccessfulPortName;
-    if (!targetPort.isEmpty()) {
-        for (const QSerialPortInfo &info : ports) {
-            if (info.portName() == targetPort) {
-                if (!serialPort->isOpen()) {
-                    if (!openPort(info.portName())) {
-                        emit logMessage(tr("Sensor port %1 not available, retrying...").arg(targetPort));
-                        return;
-                    }
-                }
-                // Wait for the STM32 frame. readyRead will handle parsing
-                // and mark us connected; if it doesn't, we leave the port
-                // open and try again on the next timer tick.
-                serialPort->waitForReadyRead(1500);
-                return;
-            }
-        }
-        emit logMessage(tr("Sensor port %1 disappeared, scanning...").arg(targetPort));
-        // Fall through to auto-scan if the known port is gone.
-    }
-
-    // First-time auto-scan: preferred/CH340 first, then everything else.
-    QList<QSerialPortInfo> candidates;
-    for (const QSerialPortInfo &info : ports) {
-        if (isLikelySensorPort(info))
-            candidates.append(info);
-    }
-    for (const QSerialPortInfo &info : ports) {
-        bool alreadyListed = false;
-        for (const QSerialPortInfo &c : candidates) {
-            if (c.portName() == info.portName()) {
-                alreadyListed = true;
-                break;
-            }
-        }
-        if (!alreadyListed)
-            candidates.append(info);
-    }
-
-    for (const QSerialPortInfo &info : candidates) {
-        closePort();
-        if (!openPort(info.portName()))
-            continue;
-
-        if (serialPort->waitForReadyRead(1500)) {
-            if (connected)
-                return;
-        } else if (serialPort->bytesAvailable() == 0) {
-            closePort();
-        } else {
-            return;
-        }
-    }
-
-    if (!serialPort->isOpen())
-        emit logMessage(tr("Light sensor not found, retrying..."));
-}
-
-void LightSensorReader::onReadyRead()
-{
-    readBuffer.append(serialPort->readAll());
-
-    int pos;
-    while ((pos = readBuffer.indexOf('\n')) != -1) {
-        QByteArray line = readBuffer.left(pos);
-        readBuffer.remove(0, pos + 1);
-        if (line.endsWith('\r'))
-            line.chop(1);
-        processLine(line);
-    }
-}
-
-void LightSensorReader::processLine(const QByteArray &line)
-{
-    QString str = QString::fromLatin1(line);
-    QRegularExpressionMatch match = dataRegex.match(str);
-    if (!match.hasMatch()) {
-        emit logMessage(tr("Raw serial data (%1): %2").arg(serialPort->portName(), str));
-        return;
-    }
-
-    int adc = match.captured(1).toInt();
-    float volts = match.captured(2).toFloat();
-
-    lastAdc = adc;
-    lastVolts = volts;
-
-    if (!connected) {
-        connected = true;
-        lastSuccessfulPortName = serialPort->portName();
-        emit connectionChanged(true);
-        emit logMessage(tr("Light sensor connected on %1").arg(serialPort->portName()));
-    }
-
-    emit logMessage(tr("ADC=%1 Voltage=%2V").arg(adc).arg(volts, 0, 'f', 3));
-    emit dataReceived(adc, volts);
-
-    // Hysteresis: for this light sensor, higher ADC means darker.
-    // Switch to night above the high threshold, back to day below the low threshold.
+    // 迟滞夜间模式检测（主线程纯计算，不阻塞）
     bool night = currentlyNight;
-    if (adc > thresholdHigh)
+    if (adcValue > thresholdHigh)
         night = true;
-    else if (adc < thresholdLow)
+    else if (adcValue < thresholdLow)
         night = false;
 
     if (night != currentlyNight) {
@@ -249,19 +142,47 @@ void LightSensorReader::processLine(const QByteArray &line)
     }
 }
 
-void LightSensorReader::onError(QSerialPort::SerialPortError error)
+void LightSensorReader::onWorkerConnectionChanged(bool connected)
 {
-    if (error == QSerialPort::NoError || error == QSerialPort::TimeoutError)
+    m_connected = connected;
+    if (connected)
+        retryCount = 0;
+    emit connectionChanged(connected);
+}
+
+void LightSensorReader::onWorkerScanFinished()
+{
+    // 所有候选端口已尝试完毕
+    retryCount++;
+    if (retryCount > MAX_RETRY_COUNT) {
+        emit logMessage(tr("Light sensor: max retries exceeded, stopping scan"));
+        reconnectTimer->stop();
+        return;
+    }
+    // 重连定时器会继续触发 tryReconnect()
+}
+
+void LightSensorReader::tryReconnect()
+{
+    if (m_connected)
         return;
 
-    // Ignore transient/spurious errors; only close the port on serious ones.
-    if (error != QSerialPort::ResourceError &&
-        error != QSerialPort::PermissionError &&
-        error != QSerialPort::NotOpenError) {
-        qDebug() << "LightSensorReader serial error (ignored):" << error;
+    retryCount++;
+    if (retryCount > MAX_RETRY_COUNT) {
+        emit logMessage(tr("Light sensor: max retries exceeded, stopping scan"));
+        reconnectTimer->stop();
         return;
     }
 
-    qDebug() << "LightSensorReader serial error:" << error;
-    closePort();
+    // 重新扫描端口列表（在主线程中调用 availablePorts，已通过 QTimer 延迟）
+    const auto ports = QSerialPortInfo::availablePorts();
+    if (ports.isEmpty()) {
+        emit logMessage(tr("No serial ports found"));
+        return;
+    }
+    lastKnownPorts = ports;
+
+    // 委托给工作线程执行实际的串口连接
+    QMetaObject::invokeMethod(worker, "startScan", Qt::QueuedConnection,
+                              Q_ARG(QList<QSerialPortInfo>, ports));
 }

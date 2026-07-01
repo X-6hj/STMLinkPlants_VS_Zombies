@@ -13,6 +13,14 @@ QPixmap ImageManager::load(const QString &path)
     return pixmaps[path];
 }
 
+void ImageManager::preload(const QList<QString> &paths)
+{
+    for (const QString &path : paths) {
+        if (pixmaps.find(path) == pixmaps.end())
+            pixmaps.insert(path, QPixmap(":/images/" + path));
+    }
+}
+
 void InitImageManager()
 {
     gImageCache = new ImageManager;

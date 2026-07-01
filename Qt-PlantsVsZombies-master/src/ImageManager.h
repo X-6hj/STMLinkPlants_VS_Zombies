@@ -12,6 +12,7 @@ class ImageManager
 {
 public:
     QPixmap load(const QString &path);
+    void preload(const QList<QString> &paths);  // 预加载常用图片，减少首帧卡顿
 
 private:
     QMap<QString, QPixmap> pixmaps;

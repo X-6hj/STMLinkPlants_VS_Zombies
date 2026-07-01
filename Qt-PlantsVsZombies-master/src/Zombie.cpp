@@ -14,7 +14,7 @@
 #include <QGraphicsEllipseItem>
 
 Zombie::Zombie()
-    : hp(270), level(1), speed(1.5),
+    : hp(270), level(1), speed(0.24),  // 1.5px/100ms → 0.24px/16ms (60fps)
       aKind(0), attack(100),
       canSelect(true), canDisplay(true),
       beAttackedPointL(82), beAttackedPointR(156),
@@ -30,7 +30,9 @@ bool Zombie::canPass(int row) const
 
 void Zombie::update()
 {
-    QPixmap pic = gImageCache->load(staticGif);
+    // 使用 normalGif（实际播放的动画）的尺寸，而非 staticGif（静态图），
+    // 确保阴影位置和Y坐标计算与实际渲染内容一致
+    QPixmap pic = gImageCache->load(normalGif);
     width = pic.width();
     height = pic.height();
 }
@@ -40,7 +42,7 @@ Zombie1::Zombie1()
     eName = "oZombie";
     cName = tr("Zombie");
     damagePoint1 = hp * 2 / 3;  // std1 = 180
-    breakPoint = 90;  // std2 = 90
+    breakPoint = hp / 3;  // std2 = 90
     cardGif = "Card/Zombies/Zombie.png";
     QString path = "Zombies/Zombie/";
     staticGif = path + "0.gif";
@@ -76,9 +78,9 @@ FlagZombie::FlagZombie()
     cName = tr("Flag Zombie");
     hp = 270;
     damagePoint1 = hp * 2 / 3;  // std1 = 180
-    speed = 2.2;
+    speed = 0.352;  // 2.2px/100ms → 0.352px/16ms (60fps)
     beAttackedPointR = 160;
-    breakPoint = 90;  // std2 = 90
+    breakPoint = hp / 3;  // std2 = 90
     QString path = "Zombies/FlagZombie/";
     cardGif = "Card/Zombies/FlagZombie.png";
     staticGif = path + "0.gif";
@@ -92,10 +94,28 @@ FlagZombie::FlagZombie()
     boomDieGif = path + "BoomDie.gif";
 }
 
+// 共享音频播放器池：避免每个僵尸实例创建独立的QMediaPlayer
+static QList<QMediaPlayer*> s_audioPool;
+static int s_audioPoolIndex = 0;
+static QObject *s_audioPoolParent = nullptr;
+
+QMediaPlayer *ZombieInstance::getSharedAudioPlayer()
+{
+    // 初始化池（懒加载）
+    if (!s_audioPoolParent) {
+        s_audioPoolParent = new QObject;  // 全局父对象，应用退出时自动清理
+        for (int i = 0; i < 4; ++i) {
+            s_audioPool.append(new QMediaPlayer(s_audioPoolParent));
+        }
+    }
+    // 轮询获取播放器
+    QMediaPlayer *player = s_audioPool[s_audioPoolIndex];
+    s_audioPoolIndex = (s_audioPoolIndex + 1) % s_audioPool.size();
+    return player;
+}
+
 ZombieInstance::ZombieInstance(const Zombie *zombie)
-    : zombieProtoType(zombie), picture(new MoviePixmapItem),
-      attackMusic(new QMediaPlayer(picture)),
-      hitMusic(new QMediaPlayer(picture))
+    : zombieProtoType(zombie), picture(new MoviePixmapItem)
 {
     uuid = QUuid::createUuid();
     hp = zombieProtoType->hp;
@@ -179,20 +199,22 @@ void ZombieInstance::judgeAttack()
 
 void ZombieInstance::normalAttack(PlantInstance *plantInstance)
 {
+    QMediaPlayer *player = getSharedAudioPlayer();
     if (qrand() % 2)
-        attackMusic->setMedia(QUrl("qrc:/audio/chomp.mp3"));
+        player->setMedia(QUrl("qrc:/audio/chomp.mp3"));
     else
-        attackMusic->setMedia(QUrl("qrc:/audio/chompsoft.mp3"));
-    attackMusic->play();
+        player->setMedia(QUrl("qrc:/audio/chompsoft.mp3"));
+    player->play();
     QUuid myUuid = uuid;
     (new Timer(this->picture, 500, [this, myUuid] {
         ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
         if (!self || self != this || goingDie) return;
+        QMediaPlayer *p = getSharedAudioPlayer();
         if (qrand() % 2)
-            attackMusic->setMedia(QUrl("qrc:/audio/chomp.mp3"));
+            p->setMedia(QUrl("qrc:/audio/chomp.mp3"));
         else
-            attackMusic->setMedia(QUrl("qrc:/audio/chompsoft.mp3"));
-        attackMusic->play();
+            p->setMedia(QUrl("qrc:/audio/chompsoft.mp3"));
+        p->play();
     }))->start();
     QUuid plantUuid = plantInstance->uuid;
     (new Timer(this->picture, 1000, [this, plantUuid, myUuid] {
@@ -278,11 +300,15 @@ void ZombieInstance::getHit(int attack)
     if (hp < zombieProtoType->breakPoint) {
         // 第二阶段：断头 — 移除损伤染血效果
         picture->setGraphicsEffect(nullptr);
+        qreal oldH = picture->boundingRect().height();
         if (isAttacking)
             picture->setMovie(zombieProtoType->lostHeadAttackGif);
         else
             picture->setMovie(zombieProtoType->lostHeadGif);
         picture->start();
+        qreal newH = picture->boundingRect().height();
+        if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+            picture->setY(picture->y() + oldH - newH);
         MoviePixmapItem *goingDieHead = new MoviePixmapItem(zombieProtoType->headGif);
         goingDieHead->setPos(attackedLX, picture->y() - 20);
         goingDieHead->setZValue(picture->zValue());
@@ -304,11 +330,15 @@ void ZombieInstance::getHit(int attack)
             damageEffect->setStrength(0.55);
             picture->setGraphicsEffect(damageEffect);
         } else {
+            qreal oldH = picture->boundingRect().height();
             if (isAttacking)
                 picture->setMovie(zombieProtoType->damageAttackGif1);
             else
                 picture->setMovie(zombieProtoType->damageGif1);
             picture->start();
+            qreal newH = picture->boundingRect().height();
+            if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+                picture->setY(picture->y() + oldH - newH);
         }
         // 模拟"断臂"粒子效果：散射出几个小碎片
         QPointF center(attackedLX, picture->y() + picture->boundingRect().height() * 0.4);
@@ -319,24 +349,29 @@ void ZombieInstance::getHit(int attack)
             particle->setPos(center);
             particle->setZValue(picture->zValue() + 0.1);
             zombieProtoType->scene->addItem(particle);
-            // 粒子飞散动画（用 Timer 驱动）
+            // 粒子飞散动画：使用单个循环定时器替代多个一次性定时器
             qreal angle = (qrand() % 360) * M_PI / 180.0;
             qreal dist = 20 + qrand() % 30;
             QPointF target = center + QPointF(cos(angle) * dist, sin(angle) * dist - 15);
             int steps = 8;
             int stepDelay = 60;
-            for (int s = 1; s <= steps; ++s) {
-                qreal progress = (qreal)s / steps;
-                (new Timer(zombieProtoType->scene, stepDelay * s, [particle, center, target, progress] {
-                    particle->setPos(center + (target - center) * progress);
-                    particle->setOpacity(1.0 - progress);
-                    if (progress >= 1.0) {
-                        if (particle->scene())
-                            particle->scene()->removeItem(particle);
-                        delete particle;
-                    }
-                }))->start();
-            }
+            QTimer *particleTimer = new QTimer(zombieProtoType->scene);
+            QSharedPointer<int> step(new int(0));
+            QObject::connect(particleTimer, &QTimer::timeout, [particleTimer, particle, center, target, steps, step] {
+                if (gPaused) return;
+                (*step)++;
+                qreal progress = (qreal)(*step) / steps;
+                particle->setPos(center + (target - center) * progress);
+                particle->setOpacity(1.0 - progress);
+                if (*step >= steps) {
+                    particleTimer->stop();
+                    if (particle->scene())
+                        particle->scene()->removeItem(particle);
+                    delete particle;
+                    particleTimer->deleteLater();
+                }
+            });
+            particleTimer->start(stepDelay);
         }
         // 受伤闪红
         picture->setOpacity(0.25);
@@ -372,13 +407,33 @@ void ZombieInstance::normalDie()
         return;
     goingDie = true;
     hp = 0;
+    qreal oldH = picture->boundingRect().height();
     picture->setMovie(zombieProtoType->dieGif);
     picture->start();
+    qreal newH = picture->boundingRect().height();
+    if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+        picture->setY(picture->y() + oldH - newH);
     QUuid myUuid = uuid;
-    (new Timer(picture, 2500, [this, myUuid] {
+    // 播放死亡动画2秒后，渐隐500ms再移除
+    (new Timer(picture, 2000, [this, myUuid] {
         ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
-        if (self && self == this)
-            zombieProtoType->scene->zombieDie(this);
+        if (!self || self != this) return;
+        // 渐隐动画：每50ms降低10%透明度，共500ms
+        QTimer *fadeTimer = new QTimer(picture);
+        QSharedPointer<qreal> opacity(new qreal(1.0));
+        QObject::connect(fadeTimer, &QTimer::timeout, [fadeTimer, this, myUuid, opacity] {
+            *opacity -= 0.1;
+            if (*opacity <= 0.0) {
+                fadeTimer->stop();
+                fadeTimer->deleteLater();
+                ZombieInstance *self2 = zombieProtoType->scene->getZombie(myUuid);
+                if (self2 && self2 == this)
+                    zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+            picture->setOpacity(*opacity);
+        });
+        fadeTimer->start(50);
     }))->start();
 }
 
@@ -392,13 +447,33 @@ void ZombieInstance::boomDie()
     if (shadowPNG)
         shadowPNG->setPixmap(QPixmap());
     QString boomGif = zombieProtoType->boomDieGif.isEmpty() ? zombieProtoType->dieGif : zombieProtoType->boomDieGif;
+    qreal oldH = picture->boundingRect().height();
     picture->setMovie(boomGif);
     picture->start();
+    qreal newH = picture->boundingRect().height();
+    if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+        picture->setY(picture->y() + oldH - newH);
     QUuid myUuid = uuid;
-    (new Timer(picture, 2000, [this, myUuid] {
+    // 播放爆炸动画1500ms后，渐隐500ms再移除
+    (new Timer(picture, 1500, [this, myUuid] {
         ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
-        if (self && self == this)
-            zombieProtoType->scene->zombieDie(this);
+        if (!self || self != this) return;
+        // 渐隐动画：每50ms降低10%透明度，共500ms
+        QTimer *fadeTimer = new QTimer(picture);
+        QSharedPointer<qreal> opacity(new qreal(1.0));
+        QObject::connect(fadeTimer, &QTimer::timeout, [fadeTimer, this, myUuid, opacity] {
+            *opacity -= 0.1;
+            if (*opacity <= 0.0) {
+                fadeTimer->stop();
+                fadeTimer->deleteLater();
+                ZombieInstance *self2 = zombieProtoType->scene->getZombie(myUuid);
+                if (self2 && self2 == this)
+                    zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+            picture->setOpacity(*opacity);
+        });
+        fadeTimer->start(50);
     }))->start();
 }
 
@@ -413,30 +488,50 @@ void ZombieInstance::ashDie()
         shadowPNG->setPixmap(QPixmap());
     // 使用 BoomDie.gif 播放化为灰烬的动画
     QString boomGif = zombieProtoType->boomDieGif.isEmpty() ? zombieProtoType->dieGif : zombieProtoType->boomDieGif;
+    qreal oldH = picture->boundingRect().height();
     picture->setMovie(boomGif);
     picture->start();
+    qreal newH = picture->boundingRect().height();
+    if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+        picture->setY(picture->y() + oldH - newH);
     QUuid myUuid = uuid;
-    (new Timer(picture, 2000, [this, myUuid] {
+    // 播放灰烬动画1500ms后，渐隐500ms再移除
+    (new Timer(picture, 1500, [this, myUuid] {
         ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
-        if (self && self == this)
-            zombieProtoType->scene->zombieDie(this);
+        if (!self || self != this) return;
+        QTimer *fadeTimer = new QTimer(picture);
+        QSharedPointer<qreal> opacity(new qreal(1.0));
+        QObject::connect(fadeTimer, &QTimer::timeout, [fadeTimer, this, myUuid, opacity] {
+            *opacity -= 0.1;
+            if (*opacity <= 0.0) {
+                fadeTimer->stop();
+                fadeTimer->deleteLater();
+                ZombieInstance *self2 = zombieProtoType->scene->getZombie(myUuid);
+                if (self2 && self2 == this)
+                    zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+            picture->setOpacity(*opacity);
+        });
+        fadeTimer->start(50);
     }))->start();
 }
 
 void ZombieInstance::playNormalballAudio()
 {
-    hitMusic->stop();
+    QMediaPlayer *player = getSharedAudioPlayer();
+    player->stop();
     switch (qrand() % 3) {
-        case 0: hitMusic->setMedia(QUrl("qrc:/audio/splat1.mp3")); break;
-        case 1: hitMusic->setMedia(QUrl("qrc:/audio/splat2.mp3")); break;
-        default: hitMusic->setMedia(QUrl("qrc:/audio/splat3.mp3")); break;
+        case 0: player->setMedia(QUrl("qrc:/audio/splat1.mp3")); break;
+        case 1: player->setMedia(QUrl("qrc:/audio/splat2.mp3")); break;
+        default: player->setMedia(QUrl("qrc:/audio/splat3.mp3")); break;
     }
-    hitMusic->play();
+    player->play();
 }
 
 
 OrnZombieInstance1::OrnZombieInstance1(const Zombie *zombie)
-    : ZombieInstance(zombie)
+    : ZombieInstance(zombie), ornDamageEffect(nullptr)
 {
     ornHp = getZombieProtoType()->ornHp;
     originalOrnHp = ornHp;  // 记录饰品原始HP，用于损伤阶段计算
@@ -459,24 +554,37 @@ void OrnZombieInstance1::getHit(int attack)
             picture->setGraphicsEffect(nullptr);
             normalGif = getZombieProtoType()->ornLostNormalGif;
             attackGif = getZombieProtoType()->ornLostAttackGif;
+            // 记录切换前的高度，用于补偿Y坐标
+            qreal oldH = picture->boundingRect().height();
             picture->setMovie(isAttacking ? attackGif : normalGif);
             picture->start();
+            // 饰品GIF通常比无饰品GIF高，调整Y坐标保持僵尸脚部位置不变
+            qreal newH = picture->boundingRect().height();
+            if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+                picture->setY(picture->y() + oldH - newH);
         } else {
-            // 饰品损伤阶段：根据剩余HP比例应用染色效果
+            // 饰品损伤阶段：根据剩余HP比例应用染色效果（复用同一effect对象）
             // 原版：损伤点1 = 2/3, 损伤点2 = 1/3
             int ornDmg1 = originalOrnHp * 2 / 3;  // 轻微损伤
             int ornDmg2 = originalOrnHp * 1 / 3;  // 严重损伤
-            QGraphicsColorizeEffect *ornEffect = new QGraphicsColorizeEffect;
+            if (!ornDamageEffect) {
+                ornDamageEffect = new QGraphicsColorizeEffect;
+                ornDamageEffect->setEnabled(false);
+            }
             if (ornHp < ornDmg2) {
                 // 严重损伤：深色/金属色
-                ornEffect->setColor(QColor(100, 90, 80));
-                ornEffect->setStrength(0.5);
+                ornDamageEffect->setColor(QColor(100, 90, 80));
+                ornDamageEffect->setStrength(0.5);
+                ornDamageEffect->setEnabled(true);
             } else if (ornHp < ornDmg1) {
                 // 轻微损伤：浅色
-                ornEffect->setColor(QColor(140, 130, 110));
-                ornEffect->setStrength(0.25);
+                ornDamageEffect->setColor(QColor(140, 130, 110));
+                ornDamageEffect->setStrength(0.25);
+                ornDamageEffect->setEnabled(true);
+            } else {
+                ornDamageEffect->setEnabled(false);
             }
-            picture->setGraphicsEffect(ornEffect);
+            picture->setGraphicsEffect(ornDamageEffect);
         }
         // 受击闪白
         picture->setOpacity(0.5);
@@ -497,7 +605,7 @@ ConeheadZombie::ConeheadZombie()
     ornHp = 370;
     level = 2;
     sunNum = 75;
-    breakPoint = 90;  // std2 = 90
+    breakPoint = hp / 3;  // std2 = 90
     QString path = "Zombies/ConeheadZombie/";
     cardGif = "Card/Zombies/ConeheadZombie.png";
     staticGif = path + "0.gif";
@@ -518,12 +626,59 @@ ConeheadZombieInstance::ConeheadZombieInstance(const Zombie *zombie)
     : OrnZombieInstance1(zombie)
 {}
 
+void ConeheadZombieInstance::getHit(int attack)
+{
+    if (hasOrnaments) {
+        ornHp -= attack;
+        if (ornHp < 1) {
+            hp += ornHp;
+            hasOrnaments = false;
+            picture->setGraphicsEffect(nullptr);
+            normalGif = getZombieProtoType()->ornLostNormalGif;
+            attackGif = getZombieProtoType()->ornLostAttackGif;
+            qreal oldH = picture->boundingRect().height();
+            picture->setMovie(isAttacking ? attackGif : normalGif);
+            picture->start();
+            qreal newH = picture->boundingRect().height();
+            if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+                picture->setY(picture->y() + oldH - newH);
+        } else {
+            // 原版路障损伤阶段阈值：226（轻微损伤）、113（严重损伤）
+            int ornDmg1 = 226;  // 原版精确值，非 2/3 公式
+            int ornDmg2 = 113;  // 原版精确值，非 1/3 公式
+            if (!ornDamageEffect) {
+                ornDamageEffect = new QGraphicsColorizeEffect;
+                ornDamageEffect->setEnabled(false);
+            }
+            if (ornHp < ornDmg2) {
+                ornDamageEffect->setColor(QColor(100, 90, 80));
+                ornDamageEffect->setStrength(0.5);
+                ornDamageEffect->setEnabled(true);
+            } else if (ornHp < ornDmg1) {
+                ornDamageEffect->setColor(QColor(140, 130, 110));
+                ornDamageEffect->setStrength(0.25);
+                ornDamageEffect->setEnabled(true);
+            } else {
+                ornDamageEffect->setEnabled(false);
+            }
+            picture->setGraphicsEffect(ornDamageEffect);
+        }
+        picture->setOpacity(0.5);
+        (new Timer(picture, 100, [this] {
+            picture->setOpacity(1);
+        }))->start();
+    }
+    else
+        ZombieInstance::getHit(attack);
+}
+
 void ConeheadZombieInstance::playNormalballAudio()
 {
     if (hasOrnaments) {
-        hitMusic->stop();
-        hitMusic->setMedia(QUrl("qrc:/audio/plastichit.mp3"));
-        hitMusic->play();
+        QMediaPlayer *player = getSharedAudioPlayer();
+        player->stop();
+        player->setMedia(QUrl("qrc:/audio/plastichit.mp3"));
+        player->play();
     }
     else
         OrnZombieInstance1::playNormalballAudio();
@@ -536,12 +691,13 @@ BucketheadZombieInstance::BucketheadZombieInstance(const Zombie *zombie)
 void BucketheadZombieInstance::playNormalballAudio()
 {
     if (hasOrnaments) {
-        hitMusic->stop();
+        QMediaPlayer *player = getSharedAudioPlayer();
+        player->stop();
         if (qrand() % 2)
-            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
+            player->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
         else
-            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
-        hitMusic->play();
+            player->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
+        player->play();
     }
     else
         OrnZombieInstance1::playNormalballAudio();
@@ -556,7 +712,7 @@ BucketheadZombie::BucketheadZombie()
     ornHp = 1100;
     level = 3;
     sunNum = 125;
-    breakPoint = 90;  // std2 = 90
+    breakPoint = hp / 3;  // std2 = 90
     QString path = "Zombies/BucketheadZombie/";
     cardGif = "Card/Zombies/BucketheadZombie.png";
     staticGif = path + "0.gif";
@@ -579,11 +735,12 @@ PoleVaultingZombie::PoleVaultingZombie()
     cName = tr("Pole Vaulting Zombie");
     hp = 500;
     damagePoint1 = hp * 2 / 3;  // 333
-    speed = 3.2;
+    speed = 0.512;  // 3.2px/100ms → 0.512px/16ms (60fps)
     beAttackedPointL = 215;
     beAttackedPointR = 260;
     level = 2;
     sunNum = 75;
+    breakPoint = hp / 3;  // 166
     QString path = "Zombies/PoleVaultingZombie/";
     cardGif = "Card/Zombies/PoleVaultingZombie.png";
     staticGif = path + "0.gif";
@@ -620,18 +777,33 @@ void PoleVaultingZombieInstance::checkActs()
                     hasPole = false;
                     poleVaultMusic->stop();
                     poleVaultMusic->play();
-                    picture->setMovie("Zombies/PoleVaultingZombie/PoleVaultingZombieJump.gif");
+                    qreal oldH = picture->boundingRect().height();
+                    // 随机选择跳跃动画，增加多样性
+                    QString jumpGif = (qrand() % 2 == 0) ?
+                        "Zombies/PoleVaultingZombie/PoleVaultingZombieJump.gif" :
+                        "Zombies/PoleVaultingZombie/PoleVaultingZombieJump2.gif";
+                    picture->setMovie(jumpGif);
                     picture->start();
+                    qreal newH = picture->boundingRect().height();
+                    if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+                        picture->setY(picture->y() + oldH - newH);
                     (new Timer(picture, 800, [this] {
                         jumping = false;
                         ZX = attackedLX -= 80;
                         X -= 80;
                         attackedRX -= 80;
                         picture->setX(X);
+                        qreal oldH2 = picture->boundingRect().height();
                         picture->setMovie(zombieProtoType->normalGif);
                         picture->start();
+                        qreal newH2 = picture->boundingRect().height();
+                        if (oldH2 > 0 && newH2 > 0 && !qFuzzyCompare(oldH2, newH2))
+                            picture->setY(picture->y() + oldH2 - newH2);
                         this->normalGif = zombieProtoType->normalGif;
                         this->attackGif = zombieProtoType->attackGif;
+                        // 原版：跳过后速度降至正常僵尸水平（4.7s/格）
+                        speed = 0.24;  // 1.5px/100ms → 0.24px/16ms (60fps)
+                        baseSpeed = 0.24;
                     }))->start();
                     return;
                 }
@@ -662,11 +834,12 @@ NewspaperZombie::NewspaperZombie()
     eName = "oNewspaperZombie";
     cName = tr("读报僵尸");
     hp = 270;
-    ornHp = 200;
-    speed = 1.5;
+    ornHp = 150;
+    speed = 0.24;  // 1.5px/100ms → 0.24px/16ms (60fps)
     level = 2;
     sunNum = 75;
     damagePoint1 = hp * 2 / 3;  // std1 = 180
+    breakPoint = hp / 3;  // std2 = 90
     QString path = "Zombies/NewspaperZombie/";
     cardGif = "Card/Zombies/NewspaperZombie.png";
     staticGif = path + "0.gif";
@@ -707,6 +880,7 @@ void NewspaperZombieInstance::getHit(int attack)
             picture->setGraphicsEffect(nullptr);
             if (!isAngry) {
                 isAngry = true;
+                // 原版：失去报纸后速度从4.7s/格→1.8s/格（约2.6倍），本项目取2倍以匹配动画帧率
                 baseSpeed *= 2.0;
                 speed = baseSpeed;
                 angryMusic->stop();
@@ -714,21 +888,32 @@ void NewspaperZombieInstance::getHit(int attack)
             }
             normalGif = getZombieProtoType()->ornLostNormalGif;
             attackGif = getZombieProtoType()->ornLostAttackGif;
+            qreal oldH = picture->boundingRect().height();
             picture->setMovie(isAttacking ? attackGif : normalGif);
             picture->start();
+            qreal newH = picture->boundingRect().height();
+            if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+                picture->setY(picture->y() + oldH - newH);
         } else {
             // 报纸损伤阶段
             int ornDmg1 = originalOrnHp * 2 / 3;
             int ornDmg2 = originalOrnHp * 1 / 3;
-            QGraphicsColorizeEffect *ornEffect = new QGraphicsColorizeEffect;
-            if (ornHp < ornDmg2) {
-                ornEffect->setColor(QColor(100, 90, 80));
-                ornEffect->setStrength(0.5);
-            } else if (ornHp < ornDmg1) {
-                ornEffect->setColor(QColor(140, 130, 110));
-                ornEffect->setStrength(0.25);
+            if (!ornDamageEffect) {
+                ornDamageEffect = new QGraphicsColorizeEffect;
+                ornDamageEffect->setEnabled(false);
             }
-            picture->setGraphicsEffect(ornEffect);
+            if (ornHp < ornDmg2) {
+                ornDamageEffect->setColor(QColor(100, 90, 80));
+                ornDamageEffect->setStrength(0.5);
+                ornDamageEffect->setEnabled(true);
+            } else if (ornHp < ornDmg1) {
+                ornDamageEffect->setColor(QColor(140, 130, 110));
+                ornDamageEffect->setStrength(0.25);
+                ornDamageEffect->setEnabled(true);
+            } else {
+                ornDamageEffect->setEnabled(false);
+            }
+            picture->setGraphicsEffect(ornDamageEffect);
         }
         picture->setOpacity(0.5);
         (new Timer(picture, 100, [this] {
@@ -742,9 +927,10 @@ void NewspaperZombieInstance::getHit(int attack)
 void NewspaperZombieInstance::playNormalballAudio()
 {
     if (hasOrnaments) {
-        hitMusic->stop();
-        hitMusic->setMedia(QUrl("qrc:/audio/plastichit.mp3"));
-        hitMusic->play();
+        QMediaPlayer *player = getSharedAudioPlayer();
+        player->stop();
+        player->setMedia(QUrl("qrc:/audio/plastichit.mp3"));
+        player->play();
     }
     else
         OrnZombieInstance1::playNormalballAudio();
@@ -757,10 +943,10 @@ FootballZombie::FootballZombie()
     hp = 270;
     damagePoint1 = hp * 2 / 3;  // std1 = 180
     ornHp = 1400;
-    speed = 2.5;
+    speed = 0.4;  // 2.5px/100ms → 0.4px/16ms (60fps)
     level = 4;
     sunNum = 175;
-    breakPoint = 90;  // std2 = 90
+    breakPoint = hp / 3;  // std2 = 90
     QString path = "Zombies/FootballZombie/";
     cardGif = "Card/Zombies/FootballZombie.png";
     staticGif = path + "0.gif";
@@ -787,12 +973,13 @@ FootballZombieInstance::FootballZombieInstance(const Zombie *zombie)
 void FootballZombieInstance::playNormalballAudio()
 {
     if (hasOrnaments) {
-        hitMusic->stop();
+        QMediaPlayer *player = getSharedAudioPlayer();
+        player->stop();
         if (qrand() % 2)
-            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
+            player->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
         else
-            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
-        hitMusic->play();
+            player->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
+        player->play();
     }
     else
         OrnZombieInstance1::playNormalballAudio();
@@ -806,10 +993,10 @@ ScreenDoorZombie::ScreenDoorZombie()
     hp = 270;
     damagePoint1 = hp * 2 / 3;  // std1 = 180
     ornHp = 1100;
-    speed = 1.5;
+    speed = 0.24;  // 1.5px/100ms → 0.24px/16ms (60fps)，原版速度与普通僵尸相同
     level = 3;
     sunNum = 125;
-    breakPoint = 90;  // std2 = 90
+    breakPoint = hp / 3;  // std2 = 90
     QString path = "Zombies/ScreenDoorZombie/";
     cardGif = "Card/Zombies/ScreenDoorZombie.png";
     staticGif = path + "0.gif";
@@ -835,12 +1022,13 @@ ScreenDoorZombieInstance::ScreenDoorZombieInstance(const Zombie *zombie)
 void ScreenDoorZombieInstance::playNormalballAudio()
 {
     if (hasOrnaments) {
-        hitMusic->stop();
+        QMediaPlayer *player = getSharedAudioPlayer();
+        player->stop();
         if (qrand() % 2)
-            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
+            player->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
         else
-            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
-        hitMusic->play();
+            player->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
+        player->play();
     }
     else
         OrnZombieInstance1::playNormalballAudio();
@@ -853,12 +1041,12 @@ JackinTheBoxZombie::JackinTheBoxZombie()
     cName = tr("小丑僵尸");
     hp = 500;
     damagePoint1 = hp * 2 / 3;  // 333
-    speed = 2.2;
+    speed = 0.352;  // 2.2px/100ms → 0.352px/16ms (60fps)
     level = 3;
     sunNum = 100;
     beAttackedPointL = 80;
     beAttackedPointR = 160;
-    breakPoint = 90;
+    breakPoint = hp / 3;  // 166
     QString path = "Zombies/JackinTheBoxZombie/";
     cardGif = "Card/Zombies/JackboxZombie.png";
     staticGif = path + "0.gif";
@@ -873,7 +1061,11 @@ JackinTheBoxZombie::JackinTheBoxZombie()
 
 JackinTheBoxZombieInstance::JackinTheBoxZombieInstance(const Zombie *zombie)
     : ZombieInstance(zombie), exploded(false), walkTicks(0)
-{}
+{
+    // 原版：行走一段随机时间后自爆，不论是否靠近植物
+    // 随机范围60~400帧（约1~6.7秒 @ 60fps）
+    explosionFrames = 60 + (qrand() % 341);
+}
 
 void JackinTheBoxZombieInstance::checkActs()
 {
@@ -895,47 +1087,43 @@ void JackinTheBoxZombieInstance::checkActs()
             zombieProtoType->scene->zombieDie(this);
             return;
         }
-        // 每走一段距离检查是否爆炸
+        // 原版：随机时间后自爆，不论是否靠近植物
         walkTicks++;
-        if (walkTicks > 50) {
-            // 检查周围是否有植物，有概率爆炸
-            int col = zombieProtoType->scene->getCoordinate().getCol(ZX);
-            if (col >= 1 && col <= 9) {
-                auto plants = zombieProtoType->scene->getPlant(col, row);
-                for (auto plant: plants.values()) {
-                    if (plant->plantProtoType->canEat
-                        && plant->attackedRX >= ZX && plant->attackedLX <= ZX) {
-                        // 靠近植物，立即爆炸
-                        exploded = true;
-                        picture->setMovie("Zombies/JackinTheBoxZombie/Boom.gif");
-                        picture->start();
-                        // 对周围植物造成伤害
-                        QMediaPlayer *boomSound = new QMediaPlayer(picture);
-                        boomSound->setMedia(QUrl("qrc:/audio/cherrybomb.mp3"));
-                        boomSound->play();
-                        QUuid myUuid = uuid;
-                        (new Timer(picture, 800, [this, myUuid] {
-                            ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
-                            if (!self || self != this) return;
-                            // 伤害周围植物
-                            int curCol = zombieProtoType->scene->getCoordinate().getCol(ZX);
-                            for (int r = row - 1; r <= row + 1; ++r) {
-                                if (r < 1 || r > zombieProtoType->scene->getCoordinate().rowCount()) continue;
-                                for (int c = curCol - 1; c <= curCol + 1; ++c) {
-                                    auto nearbyPlants = zombieProtoType->scene->getPlant(c, r);
-                                    for (auto p: nearbyPlants.values()) {
-                                        if (p->canTrigger)
-                                            p->getHurt(this, 0, 1800);
-                                    }
-                                }
+        explosionFrames--;
+        if (explosionFrames <= 0) {
+            // 自爆触发：先播放开盒子动画，再爆炸
+            exploded = true;
+            picture->setMovie("Zombies/JackinTheBoxZombie/OpenBox.gif");
+            picture->start();
+            QUuid myUuid = uuid;
+            (new Timer(picture, 800, [this, myUuid] {
+                ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+                if (!self || self != this) return;
+                picture->setMovie("Zombies/JackinTheBoxZombie/Boom.gif");
+                picture->start();
+                // 对周围植物造成伤害（3x3范围）
+                QMediaPlayer *boomSound = new QMediaPlayer(picture);
+                boomSound->setMedia(QUrl("qrc:/audio/cherrybomb.mp3"));
+                boomSound->play();
+                (new Timer(picture, 800, [this, myUuid] {
+                    ZombieInstance *self2 = zombieProtoType->scene->getZombie(myUuid);
+                    if (!self2 || self2 != this) return;
+                    // 伤害周围植物
+                    int curCol = zombieProtoType->scene->getCoordinate().getCol(ZX);
+                    for (int r = row - 1; r <= row + 1; ++r) {
+                        if (r < 1 || r > zombieProtoType->scene->getCoordinate().rowCount()) continue;
+                        for (int c = curCol - 1; c <= curCol + 1; ++c) {
+                            auto nearbyPlants = zombieProtoType->scene->getPlant(c, r);
+                            for (auto p: nearbyPlants.values()) {
+                                if (p->canTrigger)
+                                    p->getHurt(this, 0, 1800);
                             }
-                            ashDie();
-                        }))->start();
-                        return;
+                        }
                     }
-                }
-            }
-            walkTicks = 0;
+                    ashDie();
+                }))->start();
+            }))->start();
+            return;
         }
     }
 }
@@ -947,12 +1135,12 @@ DancingZombie::DancingZombie()
     cName = tr("舞王僵尸");
     hp = 500;
     damagePoint1 = hp * 2 / 3;  // 333
-    speed = 1.5;
+    speed = 0.24;  // 1.5px/100ms → 0.24px/16ms (60fps)
     level = 4;
     sunNum = 150;
     beAttackedPointL = 80;
     beAttackedPointR = 160;
-    breakPoint = 90;
+    breakPoint = hp / 3;  // 166
     QString path = "Zombies/DancingZombie/";
     cardGif = "Card/Zombies/DancingZombie.png";
     staticGif = path + "0.gif";
@@ -971,10 +1159,11 @@ DancingZombie::DancingZombie()
 }
 
 DancingZombieInstance::DancingZombieInstance(const Zombie *zombie)
-    : ZombieInstance(zombie), walkDistance(0), danceTimer(0), replenishCooldown(0), hasSummoned(false)
+    : ZombieInstance(zombie), walkDistance(0), danceTimer(0), replenishCooldown(0),
+      hasSummoned(false), isDancingPhase(false)
 {
     // 原版：初始太空滑步速度(约1.2s/格)，召唤后降速(约5.5s/格)
-    speed = 6.5; // 初始快速前进
+    speed = 1.04; // 初始快速前进 (6.5px/100ms → 1.04px/16ms)
     // 初始使用滑步动画
     this->normalGif = "Zombies/DancingZombie/SlidingStep.gif";
 }
@@ -986,10 +1175,6 @@ void DancingZombieInstance::spawnAllBackupDancers()
     Zombie *backupProto = scene->getZombieProtoType("oBackupDancer");
     if (!backupProto) return;
 
-    // 播放召唤动画
-    picture->setMovie("Zombies/DancingZombie/Summon.gif");
-    picture->start();
-
     // 显示聚光灯效果
     QGraphicsPixmapItem *spotlight = new QGraphicsPixmapItem(
         gImageCache->load("Zombies/DancingZombie/spotlight.png"));
@@ -997,43 +1182,116 @@ void DancingZombieInstance::spawnAllBackupDancers()
     spotlight->setZValue(picture->zValue() + 0.5);
     spotlight->setOpacity(0.6);
     scene->addToGame(spotlight);
-    (new Timer(scene, 1500, [spotlight] {
+    (new Timer(scene, 3000, [spotlight] {
         if (spotlight->scene())
             spotlight->scene()->removeItem(spotlight);
         delete spotlight;
     }))->start();
 
-    // 原版：在舞王僵尸的上下左右各召唤一个伴舞
-    int targetRows[] = { row - 1, row + 1, row, row };
-    qreal xOffsets[] = { 0, 0, -100, -50 };
-    for (int i = 0; i < 4; ++i) {
-        int r = targetRows[i];
-        if (r < 1 || r > scene->getGameLevelData()->LF.size()) continue;
-        if (scene->getGameLevelData()->LF[r-1] != 1) continue;
+    // 多阶段召唤动画序列：Summon1 → Summon2 → Summon3 → Summon
+    QUuid myUuid = uuid;
+    auto spawnDancer = [this, scene, backupProto](int rowOffset, qreal xOffset) {
+        int r = row + rowOffset;
+        if (r < 1 || r > scene->getGameLevelData()->LF.size()) return;
+        if (scene->getGameLevelData()->LF[r-1] != 1) return;
         ZombieInstance *backup = ZombieInstanceFactory(backupProto);
         backup->birth(r);
-        backup->X = X + xOffsets[i];
-        backup->attackedLX = X + xOffsets[i];
-        backup->ZX = X + xOffsets[i];
+        backup->X = X + xOffset;
+        backup->attackedLX = X + xOffset;
+        backup->ZX = X + xOffset;
         backup->attackedRX = backup->X + backup->zombieProtoType->beAttackedPointR;
         backup->picture->setX(backup->X);
         backup->picture->setY(backup->picture->y());
         scene->addZombie(backup);
         backupDancerUuids.append(backup->uuid);
-    }
+    };
+
+    // 阶段1：播放Summon1.gif，召唤上方伴舞
+    qreal oldH = picture->boundingRect().height();
+    picture->setMovie("Zombies/DancingZombie/Summon1.gif");
+    picture->start();
+    qreal newH = picture->boundingRect().height();
+    if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+        picture->setY(picture->y() + oldH - newH);
+    (new Timer(picture, 500, [this, myUuid, spawnDancer] {
+        ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+        if (!self || self != this || goingDie) return;
+        spawnDancer(-1, 0);  // 上方
+    }))->start();
+
+    // 阶段2：播放Summon2.gif，召唤下方伴舞
+    (new Timer(picture, 1000, [this, myUuid] {
+        ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+        if (!self || self != this || goingDie) return;
+        qreal oldH2 = picture->boundingRect().height();
+        picture->setMovie("Zombies/DancingZombie/Summon2.gif");
+        picture->start();
+        qreal newH2 = picture->boundingRect().height();
+        if (oldH2 > 0 && newH2 > 0 && !qFuzzyCompare(oldH2, newH2))
+            picture->setY(picture->y() + oldH2 - newH2);
+    }))->start();
+    (new Timer(picture, 1500, [this, myUuid, spawnDancer] {
+        ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+        if (!self || self != this || goingDie) return;
+        spawnDancer(1, 0);  // 下方
+    }))->start();
+
+    // 阶段3：播放Summon3.gif，召唤后方伴舞
+    (new Timer(picture, 2000, [this, myUuid] {
+        ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+        if (!self || self != this || goingDie) return;
+        qreal oldH3 = picture->boundingRect().height();
+        picture->setMovie("Zombies/DancingZombie/Summon3.gif");
+        picture->start();
+        qreal newH3 = picture->boundingRect().height();
+        if (oldH3 > 0 && newH3 > 0 && !qFuzzyCompare(oldH3, newH3))
+            picture->setY(picture->y() + oldH3 - newH3);
+    }))->start();
+    (new Timer(picture, 2500, [this, myUuid, spawnDancer] {
+        ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+        if (!self || self != this || goingDie) return;
+        spawnDancer(0, -100);  // 后方左侧
+    }))->start();
+
+    // 阶段4：播放Summon.gif，召唤同排后方伴舞
+    (new Timer(picture, 3000, [this, myUuid, spawnDancer] {
+        ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+        if (!self || self != this || goingDie) return;
+        qreal oldH4 = picture->boundingRect().height();
+        picture->setMovie("Zombies/DancingZombie/Summon.gif");
+        picture->start();
+        qreal newH4 = picture->boundingRect().height();
+        if (oldH4 > 0 && newH4 > 0 && !qFuzzyCompare(oldH4, newH4))
+            picture->setY(picture->y() + oldH4 - newH4);
+        spawnDancer(0, -50);  // 后方右侧
+    }))->start();
 
     // 召唤动画结束后切换到舞蹈动画
-    QUuid myUuid = uuid;
-    (new Timer(picture, 1200, [this, myUuid] {
+    (new Timer(picture, 3800, [this, myUuid] {
         ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
         if (!self || self != this || goingDie) return;
         QString dancingGif = "Zombies/DancingZombie/Dancing.gif";
         this->normalGif = dancingGif;
         if (!isAttacking) {
+            qreal oldH2 = picture->boundingRect().height();
             picture->setMovie(dancingGif);
             picture->start();
+            qreal newH2 = picture->boundingRect().height();
+            if (oldH2 > 0 && newH2 > 0 && !qFuzzyCompare(oldH2, newH2))
+                picture->setY(picture->y() + oldH2 - newH2);
         }
     }))->start();
+}
+
+bool DancingZombieInstance::isAnyBackupAttacking()
+{
+    GameScene *scene = zombieProtoType->scene;
+    for (const auto &uid : backupDancerUuids) {
+        ZombieInstance *dancer = scene->getZombie(uid);
+        if (dancer && dancer->isAttacking)
+            return true;
+    }
+    return false;
 }
 
 void DancingZombieInstance::checkActs()
@@ -1044,39 +1302,64 @@ void DancingZombieInstance::checkActs()
     }
     if (!isAttacking) {
         qreal oldX = X;
-        attackedRX -= speed;
-        ZX = attackedLX -= speed;
-        X -= speed;
-        picture->setX(X);
-        if (attackedRX < -200) {
-            zombieProtoType->scene->zombieDie(this);
-            return;
-        }
 
         if (!hasSummoned) {
             // 原版：太空滑步约3格后召唤
+            attackedRX -= speed;
+            ZX = attackedLX -= speed;
+            X -= speed;
+            picture->setX(X);
+            if (attackedRX < -200) {
+                zombieProtoType->scene->zombieDie(this);
+                return;
+            }
             walkDistance += qAbs(X - oldX);
             qreal gridWidth = 80.0; // 一格约80像素
             if (walkDistance >= gridWidth * 3.0) {
                 hasSummoned = true;
                 spawnAllBackupDancers();
-                // 召唤后降速
-                speed = 1.2; // 约5.5s/格
+                // 召唤后降速（原版：1.5s/格→5.5s/格，约3.67倍）
+                speed = 0.288;  // 1.8px/100ms → 0.288px/16ms (60fps)
+                baseSpeed = 0.288;
                 danceTimer = 0;
+                isDancingPhase = false; // 召唤后先进入前进阶段
             }
         } else {
-            // 召唤后，周期性检查伴舞补充
+            // 召唤后：舞蹈周期 = 前进阶段(2.4s) + 原地跳舞阶段(2.2s)
             danceTimer++;
-            if (danceTimer > 40) {
+            int cycleFrames = isDancingPhase ? DANCE_STILL_FRAMES : DANCE_FORWARD_FRAMES;
+
+            // 编队同步：如果有伴舞在攻击，暂停前进
+            bool formationBlocked = isAnyBackupAttacking();
+
+            if (!isDancingPhase && !formationBlocked) {
+                // 前进阶段：缓慢移动
+                attackedRX -= speed;
+                ZX = attackedLX -= speed;
+                X -= speed;
+                picture->setX(X);
+                if (attackedRX < -200) {
+                    zombieProtoType->scene->zombieDie(this);
+                    return;
+                }
+            }
+            // 原地跳舞阶段或编队同步中：不移动
+
+            if (danceTimer >= cycleFrames) {
+                // 切换阶段
                 danceTimer = 0;
-                // 清理已死亡的伴舞UUID
+                isDancingPhase = !isDancingPhase;
+            }
+
+            // 周期性检查伴舞补充（每40帧）
+            if (danceTimer % 40 == 0) {
                 GameScene *scene = zombieProtoType->scene;
+                // 清理已死亡的伴舞UUID
                 for (int i = backupDancerUuids.size() - 1; i >= 0; --i) {
                     if (!scene->getZombie(backupDancerUuids[i])) {
                         backupDancerUuids.removeAt(i);
                     }
                 }
-                // 检查伴舞是否减员，减员则补充（每200帧约6-7秒最多补充一次）
                 replenishCooldown++;
                 int aliveDancers = backupDancerUuids.size();
                 if (aliveDancers < 4 && replenishCooldown > 200) {
@@ -1115,13 +1398,32 @@ void DancingZombieInstance::normalDie()
     if (goingDie) return;
     goingDie = true;
     hp = 0;
+    qreal oldH = picture->boundingRect().height();
     picture->setMovie(zombieProtoType->dieGif);
     picture->start();
+    qreal newH = picture->boundingRect().height();
+    if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+        picture->setY(picture->y() + oldH - newH);
     QUuid myUuid = uuid;
-    (new Timer(picture, 2500, [this, myUuid] {
+    // 播放死亡动画2秒后，渐隐500ms再移除
+    (new Timer(picture, 2000, [this, myUuid] {
         ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
-        if (self && self == this)
-            zombieProtoType->scene->zombieDie(this);
+        if (!self || self != this) return;
+        QTimer *fadeTimer = new QTimer(picture);
+        QSharedPointer<qreal> opacity(new qreal(1.0));
+        QObject::connect(fadeTimer, &QTimer::timeout, [fadeTimer, this, myUuid, opacity] {
+            *opacity -= 0.1;
+            if (*opacity <= 0.0) {
+                fadeTimer->stop();
+                fadeTimer->deleteLater();
+                ZombieInstance *self2 = zombieProtoType->scene->getZombie(myUuid);
+                if (self2 && self2 == this)
+                    zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+            picture->setOpacity(*opacity);
+        });
+        fadeTimer->start(50);
     }))->start();
 }
 
@@ -1132,7 +1434,7 @@ BackupDancer::BackupDancer()
     cName = tr("伴舞僵尸");
     hp = 270;
     damagePoint1 = hp * 2 / 3;  // 180
-    speed = 1.2;
+    speed = 0.24;  // 1.5px/100ms → 0.24px/16ms (60fps)，原版速度与普通僵尸相同
     sunNum = 0;
     beAttackedPointL = 80;
     beAttackedPointR = 140;
@@ -1181,8 +1483,12 @@ void BackupDancerInstance::birth(int row)
     (new Timer(picture, 800, [this, myUuid] {
         ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
         if (!self || self != this || goingDie) return;
+        qreal oldH = picture->boundingRect().height();
         picture->setMovie("Zombies/BackupDancer/BackupDancer.gif");
         picture->start();
+        qreal newH = picture->boundingRect().height();
+        if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+            picture->setY(picture->y() + oldH - newH);
     }))->start();
 }
 
@@ -1193,7 +1499,7 @@ SnorkelZombie::SnorkelZombie()
     cName = tr("潜水僵尸");
     hp = 270;
     damagePoint1 = hp * 2 / 3;  // 180
-    speed = 1.5;
+    speed = 0.24;  // 1.5px/100ms → 0.24px/16ms (60fps)
     level = 2;
     sunNum = 50;
     beAttackedPointL = 80;
@@ -1213,11 +1519,12 @@ SnorkelZombie::SnorkelZombie()
 }
 
 SnorkelZombieInstance::SnorkelZombieInstance(const Zombie *zombie)
-    : ZombieInstance(zombie), submerged(true), visCheckTimer(0)
+    : ZombieInstance(zombie), submerged(true), transitioning(false), visCheckTimer(0)
 {}
 
 void SnorkelZombieInstance::updateVisibility()
 {
+    if (transitioning) return;  // 过渡动画播放中，不处理
     // 检查当前位置是否有植物
     int col = zombieProtoType->scene->getCoordinate().getCol(ZX);
     bool nearPlant = false;
@@ -1232,15 +1539,29 @@ void SnorkelZombieInstance::updateVisibility()
         }
     }
     if (nearPlant && submerged) {
+        // 浮出水面：播放Risk.gif过渡动画后切换为正常行走
         submerged = false;
-        picture->setOpacity(1.0);
-        picture->setMovie(normalGif);
+        transitioning = true;
+        picture->setMovie("Zombies/SnorkelZombie/Risk.gif");
         picture->start();
+        (new Timer(picture, 600, [this] {
+            transitioning = false;
+            picture->setOpacity(1.0);
+            picture->setMovie(normalGif);
+            picture->start();
+        }))->start();
     } else if (!nearPlant && !submerged) {
+        // 潜入水中：播放Sink.gif过渡动画后切换为半透明
         submerged = true;
-        picture->setOpacity(0.15);
-        picture->setMovie(normalGif);
+        transitioning = true;
+        picture->setMovie("Zombies/SnorkelZombie/Sink.gif");
         picture->start();
+        (new Timer(picture, 600, [this] {
+            transitioning = false;
+            picture->setOpacity(0.15);
+            picture->setMovie(normalGif);
+            picture->start();
+        }))->start();
     }
 }
 
@@ -1269,14 +1590,21 @@ void SnorkelZombieInstance::checkActs()
     }
 }
 
+void SnorkelZombieInstance::getPea(int attack, int direction)
+{
+    // 潜水状态下免疫豌豆攻击
+    if (submerged)
+        return;
+    ZombieInstance::getPea(attack, direction);
+}
+
 void SnorkelZombieInstance::getHit(int attack)
 {
-    // 潜水状态下受到伤害减半
+    // 潜水状态下免疫直射攻击（豌豆等），但仍受投掷/爆炸/秒杀伤害
     if (submerged) {
-        ZombieInstance::getHit(attack / 2);
-    } else {
-        ZombieInstance::getHit(attack);
+        return;  // 免疫所有直接攻击
     }
+    ZombieInstance::getHit(attack);
 }
 
 // ===================== 海豚骑士僵尸 =====================
@@ -1286,12 +1614,12 @@ DolphinRiderZombie::DolphinRiderZombie()
     cName = tr("海豚骑士僵尸");
     hp = 500;
     damagePoint1 = hp * 2 / 3;  // std1 = 333
-    speed = 3.2;
+    speed = 0.512;  // 3.2px/100ms → 0.512px/16ms (60fps)
     level = 2;
     sunNum = 75;
     beAttackedPointL = 120;
     beAttackedPointR = 240;
-    breakPoint = 90;  // std2 = 90
+    breakPoint = hp / 3;  // std2 = 166
     QString path = "Zombies/DolphinRiderZombie/";
     cardGif = "Card/Zombies/DolphinRiderZombie.png";
     staticGif = path + "0.gif";
@@ -1327,19 +1655,33 @@ void DolphinRiderZombieInstance::checkActs()
                 if (plant->plantProtoType->canEat
                     && plant->attackedRX >= ZX && plant->attackedLX <= ZX) {
                     jumped = true;
-                    picture->setMovie("Zombies/DolphinRiderZombie/Jump.gif");
+                    qreal oldH = picture->boundingRect().height();
+                    // 随机选择跳跃动画变体，增加多样性
+                    int jumpVariant = qrand() % 3;
+                    QString jumpGif = (jumpVariant == 0) ? "Zombies/DolphinRiderZombie/Jump.gif" :
+                                      (jumpVariant == 1) ? "Zombies/DolphinRiderZombie/Jump2.gif" :
+                                                            "Zombies/DolphinRiderZombie/Jump3.gif";
+                    picture->setMovie(jumpGif);
                     picture->start();
+                    qreal newH = picture->boundingRect().height();
+                    if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+                        picture->setY(picture->y() + oldH - newH);
                     (new Timer(picture, 800, [this] {
                         ZX = attackedLX -= 80;
                         X -= 80;
                         attackedRX -= 80;
                         picture->setX(X);
+                        qreal oldH2 = picture->boundingRect().height();
                         picture->setMovie(zombieProtoType->normalGif);
                         picture->start();
+                        qreal newH2 = picture->boundingRect().height();
+                        if (oldH2 > 0 && newH2 > 0 && !qFuzzyCompare(oldH2, newH2))
+                            picture->setY(picture->y() + oldH2 - newH2);
                         this->normalGif = zombieProtoType->normalGif;
                         this->attackGif = zombieProtoType->attackGif;
-                        // 原版：跃过后速度大降(约4-7s/格)
-                        speed = 1.0;
+                        // 原版：跃过后速度大降(约4.7s/格，等同普通僵尸)
+                        speed = 0.24;  // 1.5px/100ms → 0.24px/16ms (60fps)
+                        baseSpeed = 0.24;
                     }))->start();
                     return;
                 }
@@ -1365,9 +1707,9 @@ Imp::Imp()
 {
     eName = "oImp";
     cName = tr("小鬼僵尸");
-    hp = 190;
-    damagePoint1 = hp * 2 / 3;  // 126
-    speed = 1.5;
+    hp = 270;
+    damagePoint1 = hp * 2 / 3;  // 180
+    speed = 0.48;  // 3.0px/100ms → 0.48px/16ms (60fps)，原版约2.5s/格，速度约为普通僵尸2倍
     level = 1;
     sunNum = 25;
     beAttackedPointL = 60;
@@ -1398,7 +1740,7 @@ DuckyTubeZombie1::DuckyTubeZombie1()
     cName = tr("鸭子僵尸");
     hp = 270;
     damagePoint1 = hp * 2 / 3;  // 180
-    speed = 1.5;
+    speed = 0.24;  // 1.5px/100ms → 0.24px/16ms (60fps)
     level = 1;
     sunNum = 25;
     beAttackedPointL = 80;
@@ -1455,9 +1797,10 @@ DuckyTubeZombie2Instance::DuckyTubeZombie2Instance(const Zombie *zombie)
 void DuckyTubeZombie2Instance::playNormalballAudio()
 {
     if (hasOrnaments) {
-        hitMusic->stop();
-        hitMusic->setMedia(QUrl("qrc:/audio/plastichit.mp3"));
-        hitMusic->play();
+        QMediaPlayer *player = getSharedAudioPlayer();
+        player->stop();
+        player->setMedia(QUrl("qrc:/audio/plastichit.mp3"));
+        player->play();
     }
     else
         OrnZombieInstance1::playNormalballAudio();
@@ -1497,12 +1840,13 @@ DuckyTubeZombie3Instance::DuckyTubeZombie3Instance(const Zombie *zombie)
 void DuckyTubeZombie3Instance::playNormalballAudio()
 {
     if (hasOrnaments) {
-        hitMusic->stop();
+        QMediaPlayer *player = getSharedAudioPlayer();
+        player->stop();
         if (qrand() % 2)
-            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
+            player->setMedia(QUrl("qrc:/audio/shieldhit.mp3"));
         else
-            hitMusic->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
-        hitMusic->play();
+            player->setMedia(QUrl("qrc:/audio/shieldhit2.mp3"));
+        player->play();
     }
     else
         OrnZombieInstance1::playNormalballAudio();
@@ -1515,7 +1859,7 @@ ZomboniZombie::ZomboniZombie()
     cName = tr("冰车僵尸");
     hp = 1350;
     damagePoint1 = hp * 2 / 3;  // 900
-    speed = 1.8;
+    speed = 0.288;  // 1.8px/100ms → 0.288px/16ms (60fps)
     level = 4;
     sunNum = 175;
     beAttackedPointL = 120;
@@ -1603,13 +1947,32 @@ void ZomboniZombieInstance::boomDie()
     beAttacked = false;
     if (shadowPNG) shadowPNG->setPixmap(QPixmap());
     QString boomGif = zombieProtoType->boomDieGif.isEmpty() ? zombieProtoType->dieGif : zombieProtoType->boomDieGif;
+    qreal oldH = picture->boundingRect().height();
     picture->setMovie(boomGif);
     picture->start();
+    qreal newH = picture->boundingRect().height();
+    if (oldH > 0 && newH > 0 && !qFuzzyCompare(oldH, newH))
+        picture->setY(picture->y() + oldH - newH);
     QUuid myUuid = uuid;
-    (new Timer(picture, 2000, [this, myUuid] {
+    // 播放爆炸动画1500ms后，渐隐500ms再移除
+    (new Timer(picture, 1500, [this, myUuid] {
         ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
-        if (self && self == this)
-            zombieProtoType->scene->zombieDie(this);
+        if (!self || self != this) return;
+        QTimer *fadeTimer = new QTimer(picture);
+        QSharedPointer<qreal> opacity(new qreal(1.0));
+        QObject::connect(fadeTimer, &QTimer::timeout, [fadeTimer, this, myUuid, opacity] {
+            *opacity -= 0.1;
+            if (*opacity <= 0.0) {
+                fadeTimer->stop();
+                fadeTimer->deleteLater();
+                ZombieInstance *self2 = zombieProtoType->scene->getZombie(myUuid);
+                if (self2 && self2 == this)
+                    zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+            picture->setOpacity(*opacity);
+        });
+        fadeTimer->start(50);
     }))->start();
 }
 
@@ -1623,43 +1986,43 @@ Zombie *ZombieFactory(GameScene *scene, const QString &ename)
     Zombie *zombie = nullptr;
     if (ename == "oZombie")
         zombie = new Zombie1;
-    if (ename == "oZombie2")
+    else if (ename == "oZombie2")
         zombie = new Zombie2;
-    if (ename == "oZombie3")
+    else if (ename == "oZombie3")
         zombie = new Zombie3;
-    if (ename == "oFlagZombie")
+    else if (ename == "oFlagZombie")
         zombie = new FlagZombie;
-    if (ename == "oConeheadZombie")
+    else if (ename == "oConeheadZombie")
         zombie = new ConeheadZombie;
-    if (ename == "oBucketheadZombie")
+    else if (ename == "oBucketheadZombie")
         zombie = new BucketheadZombie;
-    if (ename == "oPoleVaultingZombie")
+    else if (ename == "oPoleVaultingZombie")
         zombie = new PoleVaultingZombie;
-    if (ename == "oNewspaperZombie")
+    else if (ename == "oNewspaperZombie")
         zombie = new NewspaperZombie;
-    if (ename == "oFootballZombie")
+    else if (ename == "oFootballZombie")
         zombie = new FootballZombie;
-    if (ename == "oScreenDoorZombie")
+    else if (ename == "oScreenDoorZombie")
         zombie = new ScreenDoorZombie;
-    if (ename == "oJackinTheBoxZombie")
+    else if (ename == "oJackinTheBoxZombie")
         zombie = new JackinTheBoxZombie;
-    if (ename == "oDancingZombie")
+    else if (ename == "oDancingZombie")
         zombie = new DancingZombie;
-    if (ename == "oBackupDancer")
+    else if (ename == "oBackupDancer")
         zombie = new BackupDancer;
-    if (ename == "oSnorkelZombie")
+    else if (ename == "oSnorkelZombie")
         zombie = new SnorkelZombie;
-    if (ename == "oDolphinRiderZombie")
+    else if (ename == "oDolphinRiderZombie")
         zombie = new DolphinRiderZombie;
-    if (ename == "oZomboni")
+    else if (ename == "oZomboni")
         zombie = new ZomboniZombie;
-    if (ename == "oImp")
+    else if (ename == "oImp")
         zombie = new Imp;
-    if (ename == "oDuckyTubeZombie1")
+    else if (ename == "oDuckyTubeZombie1")
         zombie = new DuckyTubeZombie1;
-    if (ename == "oDuckyTubeZombie2")
+    else if (ename == "oDuckyTubeZombie2")
         zombie = new DuckyTubeZombie2;
-    if (ename == "oDuckyTubeZombie3")
+    else if (ename == "oDuckyTubeZombie3")
         zombie = new DuckyTubeZombie3;
     if (zombie) {
         zombie->scene = scene;
@@ -1672,33 +2035,33 @@ ZombieInstance *ZombieInstanceFactory(const Zombie *zombie)
 {
     if (zombie->eName == "oConeheadZombie")
         return new ConeheadZombieInstance(zombie);
-    if (zombie->eName == "oBucketheadZombie")
+    else if (zombie->eName == "oBucketheadZombie")
         return new BucketheadZombieInstance(zombie);
-    if (zombie->eName == "oPoleVaultingZombie")
+    else if (zombie->eName == "oPoleVaultingZombie")
         return new PoleVaultingZombieInstance(zombie);
-    if (zombie->eName == "oNewspaperZombie")
+    else if (zombie->eName == "oNewspaperZombie")
         return new NewspaperZombieInstance(zombie);
-    if (zombie->eName == "oFootballZombie")
+    else if (zombie->eName == "oFootballZombie")
         return new FootballZombieInstance(zombie);
-    if (zombie->eName == "oScreenDoorZombie")
+    else if (zombie->eName == "oScreenDoorZombie")
         return new ScreenDoorZombieInstance(zombie);
-    if (zombie->eName == "oJackinTheBoxZombie")
+    else if (zombie->eName == "oJackinTheBoxZombie")
         return new JackinTheBoxZombieInstance(zombie);
-    if (zombie->eName == "oDancingZombie")
+    else if (zombie->eName == "oDancingZombie")
         return new DancingZombieInstance(zombie);
-    if (zombie->eName == "oBackupDancer")
+    else if (zombie->eName == "oBackupDancer")
         return new BackupDancerInstance(zombie);
-    if (zombie->eName == "oSnorkelZombie")
+    else if (zombie->eName == "oSnorkelZombie")
         return new SnorkelZombieInstance(zombie);
-    if (zombie->eName == "oDolphinRiderZombie")
+    else if (zombie->eName == "oDolphinRiderZombie")
         return new DolphinRiderZombieInstance(zombie);
-    if (zombie->eName == "oZomboni")
+    else if (zombie->eName == "oZomboni")
         return new ZomboniZombieInstance(zombie);
-    if (zombie->eName == "oImp")
+    else if (zombie->eName == "oImp")
         return new ImpInstance(zombie);
-    if (zombie->eName == "oDuckyTubeZombie2")
+    else if (zombie->eName == "oDuckyTubeZombie2")
         return new DuckyTubeZombie2Instance(zombie);
-    if (zombie->eName == "oDuckyTubeZombie3")
+    else if (zombie->eName == "oDuckyTubeZombie3")
         return new DuckyTubeZombie3Instance(zombie);
     return new ZombieInstance(zombie);
 }

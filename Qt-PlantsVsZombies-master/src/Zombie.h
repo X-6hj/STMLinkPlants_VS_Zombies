@@ -97,6 +97,9 @@ public:
     virtual void ashDie();
     virtual void playNormalballAudio();
 
+    // 共享音频播放器池（避免每个僵尸实例创建独立的QMediaPlayer）
+    static QMediaPlayer *getSharedAudioPlayer();
+
     QUuid uuid;
     int hp;
     qreal speed;      // 当前实际移动速度（已应用所有减速）
@@ -115,7 +118,6 @@ public:
 
     QGraphicsPixmapItem *shadowPNG;
     MoviePixmapItem *picture;
-    QMediaPlayer *attackMusic, *hitMusic;
 };
 
 class OrnZombie1: public Zombie1
@@ -136,6 +138,7 @@ public:
     int ornHp;
     int originalOrnHp;  // 饰品原始HP，用于计算损伤阶段
     bool hasOrnaments;
+    QGraphicsColorizeEffect *ornDamageEffect;  // 复用饰品损伤染色效果
 };
 
 class ConeheadZombie: public OrnZombie1
@@ -149,6 +152,7 @@ class ConeheadZombieInstance: public OrnZombieInstance1
 {
 public:
     ConeheadZombieInstance(const Zombie *zombie);
+    virtual void getHit(int attack) override;
     virtual void playNormalballAudio();
 
 };
@@ -251,6 +255,7 @@ public:
 private:
     bool exploded;
     int walkTicks;
+    int explosionFrames; // 随机自爆倒计时帧数
 };
 
 // ---------- 舞王僵尸 ----------
@@ -269,11 +274,15 @@ public:
     virtual void normalDie() override;
 private:
     void spawnAllBackupDancers();
+    bool isAnyBackupAttacking();
     int walkDistance;   // 已行走距离（像素）
-    int danceTimer;     // 跳舞计时
+    int danceTimer;     // 舞蹈周期计时（帧）
     int replenishCooldown; // 补充伴舞冷却帧数
     QList<QUuid> backupDancerUuids;
     bool hasSummoned;
+    bool isDancingPhase; // 当前是否在原地跳舞阶段
+    static const int DANCE_FORWARD_FRAMES = 144;  // 前进阶段帧数（2.4s @ 60fps）
+    static const int DANCE_STILL_FRAMES = 132;    // 原地跳舞帧数（2.2s @ 60fps）
 };
 
 // ---------- 伴舞僵尸 ----------
@@ -305,8 +314,10 @@ public:
     SnorkelZombieInstance(const Zombie *zombie);
     virtual void checkActs() override;
     virtual void getHit(int attack) override;
+    virtual void getPea(int attack, int direction) override;
 private:
     bool submerged;
+    bool transitioning;  // 正在播放浮出/潜水过渡动画
     int visCheckTimer;
     void updateVisibility();
 };

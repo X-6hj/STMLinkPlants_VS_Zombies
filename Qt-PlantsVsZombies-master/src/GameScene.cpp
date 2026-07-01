@@ -473,6 +473,12 @@ void GameScene::setInfoText(const QString &text)
 void GameScene::loadReady()
 {
     gMainView->getMainWindow()->setWindowTitle(tr("Plants vs. Zombies") + " - " + gameLevelData->cName);
+    // 预加载常用资源，减少首帧卡顿
+    gImageCache->preload({
+        "interface/Shovel.png", "interface/ShovelBackground.png",
+        "interface/SelectorScreen.png", "interface/ShovelBank.png",
+        "interface/card_panel_bg.png", "interface/SelectorScreen.png"
+    });
     if (!gameLevelData->showScroll)
         background->setPos(-115, 0);
     gameLevelData->loadAccess(this);
@@ -992,7 +998,12 @@ void GameScene::advanceFlag()
         auto iter = gameLevelData->flagToMonitor.find(waveNum);
         if (iter != gameLevelData->flagToMonitor.end())
             (new Timer(this, 16900, [this, iter] { (*iter)(this); }))->start();
-        (waveTimer = new Timer(this, 19900, [this] { advanceFlag(); }))->start();
+        if (waveTimer) {
+            waveTimer->stop();
+            waveTimer->deleteLater();
+        }
+        waveTimer = new Timer(this, 19900, [this] { advanceFlag(); });
+        waveTimer->start();
     }
     auto &flagToSumNum = gameLevelData->flagToSumNum;
     selectFlagZombie(flagToSumNum.second[qLowerBound(flagToSumNum.first, waveNum) - flagToSumNum.first.begin()]);
@@ -1031,8 +1042,12 @@ void GameScene::zombieDie(ZombieInstance *zombie)
         zombieInstances.removeAt(i);
     zombieRow[zombie->row].removeOne(zombie);
     if (zombieInstances.isEmpty() && waveNum < gameLevelData->flagNum) {
-        delete waveTimer;
-        (new Timer(this, 5000, [this] { advanceFlag(); }))->start();
+        if (waveTimer) {
+            waveTimer->stop();
+            waveTimer->deleteLater();
+        }
+        waveTimer = new Timer(this, 5000, [this] { advanceFlag(); });
+        waveTimer->start();
     }
     delete zombie;
 }
@@ -1172,7 +1187,7 @@ void GameScene::addZombie(ZombieInstance *zombieInstance)
 void GameScene::beginMonitor()
 {
     monitorTimer = new QTimer(this);
-    monitorTimer->setInterval(100);
+    monitorTimer->setInterval(16);  // 60fps 游戏循环
     connect(monitorTimer, &QTimer::timeout, [this] {
         if (paused) return;  // 暂停状态下跳过游戏逻辑更新
         // Win/Lose check
@@ -1180,15 +1195,18 @@ void GameScene::beginMonitor()
             levelManager->checkWinLose();
 
         for (int row = 1; row <= coordinate.rowCount(); ++row) {
-            QList<ZombieInstance *> zombiesCopy = zombieRow[row];
+            QList<ZombieInstance *> &zombiesOnRow = zombieRow[row];
+            if (zombiesOnRow.isEmpty()) continue;  // 跳过空行
+            QList<ZombieInstance *> zombiesCopy = zombiesOnRow;
             for (ZombieInstance *zombie: zombiesCopy) {
                 QUuid zombieUuid = zombie->uuid;
                 if (zombie->hp > 0 && zombie->ZX <= 900) {
-                    QList<Trigger *> triggerCopy = plantTriggers[row];
-                    for (auto trigger: triggerCopy) {
-                        if (trigger->plant->canTrigger
-                            && trigger->from <= zombie->attackedLX
-                            && trigger->to >= zombie->attackedLX) {
+                    QList<Trigger *> &triggersOnRow = plantTriggers[row];
+                    // 逆序遍历触发器（触发器按从左到右排列，僵尸从右向左移动）
+                    for (auto trigger: triggersOnRow) {
+                        if (trigger->from > zombie->attackedRX) break;  // 触发器在僵尸右侧，跳过
+                        if (trigger->to >= zombie->attackedLX
+                            && trigger->plant->canTrigger) {
                             trigger->plant->triggerCheck(zombie, trigger);
                         }
                     }
@@ -1255,27 +1273,21 @@ void GameScene::setPaused(bool p)
             monitorTimer->stop();
         if (waveTimer)
             waveTimer->stop();
-        // 暂停所有 GIF 动画
-        QList<QGraphicsItem *> allItems = QGraphicsScene::items();
-        for (auto *item : allItems) {
-            MoviePixmapItem *movieItem = dynamic_cast<MoviePixmapItem *>(item);
-            if (movieItem) {
+        // 暂停所有 GIF 动画（仅遍历 gameGroup 子项，避免遍历全场景 UI 元素）
+        for (auto *item : gameGroup->childItems()) {
+            if (auto *movieItem = dynamic_cast<MoviePixmapItem *>(item))
                 movieItem->stop();
-            }
         }
     } else {
         // 恢复：重新启动
         if (monitorTimer)
             monitorTimer->start();
-        if (waveTimer)
+        if (waveTimer && waveTimer->parent())  // parent() 检查确保未被 deleteLater 清理
             waveTimer->start();
         // 恢复所有 GIF 动画
-        QList<QGraphicsItem *> allItems = QGraphicsScene::items();
-        for (auto *item : allItems) {
-            MoviePixmapItem *movieItem = dynamic_cast<MoviePixmapItem *>(item);
-            if (movieItem) {
+        for (auto *item : gameGroup->childItems()) {
+            if (auto *movieItem = dynamic_cast<MoviePixmapItem *>(item))
                 movieItem->start();
-            }
         }
     }
 }

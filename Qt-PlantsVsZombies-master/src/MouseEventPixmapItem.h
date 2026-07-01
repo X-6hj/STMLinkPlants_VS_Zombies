@@ -88,6 +88,7 @@ public slots:
 
 private:
     QMovie *movie;
+    QMap<QString, QMovie*> movieCache;  // 当前实例的GIF缓存，避免重复创建QMovie
 };
 
 #endif //PLANTS_VS_ZOMBIES_MOUSEEVENTPIXMAPITEM_H

@@ -1,15 +1,20 @@
 //
-// Light sensor reader: receives ADC data from STM32 via UART
-// and notifies subscribers of the current ambient light level.
+// Light sensor reader: 从 STM32 通过 UART 接收 ADC 数据
+// 并通知订阅者当前环境光等级。
+//
+// 串口 I/O 操作委托给 SerialWorker（在独立线程中运行），
+// 确保 UI 线程不受串口阻塞影响。
 //
 
 #ifndef LIGHT_SENSOR_READER_H
 #define LIGHT_SENSOR_READER_H
 
 #include <QObject>
-#include <QSerialPort>
+#include <QSerialPortInfo>
 #include <QTimer>
-#include <QRegularExpression>
+#include <QThread>
+
+class SerialWorker;
 
 class LightSensorReader : public QObject
 {
@@ -19,7 +24,7 @@ public:
     explicit LightSensorReader(QObject *parent = nullptr);
     ~LightSensorReader();
 
-    void start();
+    void start(const QList<QSerialPortInfo> &knownPorts = {});
     void stop();
 
     bool isConnected() const;
@@ -40,31 +45,30 @@ signals:
     void logMessage(const QString &message);
 
 private slots:
-    void onReadyRead();
-    void onError(QSerialPort::SerialPortError error);
-    void tryConnect();
+    void onWorkerDataReceived(int adcValue, float voltage);
+    void onWorkerConnectionChanged(bool connected);
+    void onWorkerScanFinished();
+    void tryReconnect();
 
 private:
-    bool openPort(const QString &name);
-    void closePort();
-    void processLine(const QByteArray &line);
+    QThread *workerThread;
+    SerialWorker *worker;
 
-    QSerialPort *serialPort;
     QTimer *reconnectTimer;
-    QByteArray readBuffer;
-    QRegularExpression dataRegex;
 
     bool currentlyNight;
-    bool connected;
+    bool m_connected;
     int lastAdc;
     float lastVolts;
 
     int thresholdLow;
     int thresholdHigh;
     QString preferredPortName;
-    QString lastSuccessfulPortName;
+    int retryCount;
 
-    static const int BAUD_RATE;
+    QList<QSerialPortInfo> lastKnownPorts;
+
+    static const int MAX_RETRY_COUNT = 10;
 };
 
 #endif // LIGHT_SENSOR_READER_H

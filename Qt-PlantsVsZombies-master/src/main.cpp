@@ -4,11 +4,15 @@
 
 #include <QtCore>
 #include <QtWidgets>
+#include <QSerialPortInfo>
 #include "MainView.h"
 #include "ImageManager.h"
 
 int main(int argc, char * *argv)
 {
+    // 注册 QList<QSerialPortInfo> 为 Qt 元类型，支持跨线程 invokeMethod
+    qRegisterMetaType<QList<QSerialPortInfo>>("QList<QSerialPortInfo>");
+
     QApplication app(argc, argv);
     // For QSettings
     QCoreApplication::setOrganizationName("Sun Ziping");

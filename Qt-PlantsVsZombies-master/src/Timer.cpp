@@ -14,8 +14,9 @@ Timer::Timer(QObject *parent, int timeout, std::function<void(void)> functor) : 
     setSingleShot(true);
     connect(this, &Timer::timeout, [this, functor, timeout, parent] {
         if (gPaused && timeout > 0) {
-            // 暂停中：定时器保持当前对象，重新启动等待恢复后执行
-            // 不创建新对象防止长时间暂停时内存泄漏（用户点击菜单久留不回）
+            // 暂停中：以 500ms 间隔重新启动，避免高频空转消耗 CPU
+            // 长时间暂停时不会产生大量定时器事件
+            this->setInterval(500);
             this->start();
             return;
         }

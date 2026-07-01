@@ -27,33 +27,40 @@ MainView::MainView(MainWindow *mainWindow)
         qDebug() << "[LightSensor]" << msg;
     });
 
-    // Prefer a CH340 / USB-TTL adapter if present; allow override via env var.
-    QString envPort = QString::fromLocal8Bit(qgetenv("LIGHT_SENSOR_PORT"));
-    if (!envPort.isEmpty()) {
-        lightSensor->setPreferredPort(envPort);
-        qDebug() << "[LightSensor] preferred port from env:" << envPort;
-    } else {
-        for (const QSerialPortInfo &info : QSerialPortInfo::availablePorts()) {
-            QString desc = info.description().toUpper();
-            if (desc.contains("CH340") || desc.contains("USB-SERIAL")) {
-                lightSensor->setPreferredPort(info.portName());
-                qDebug() << "[LightSensor] preferred port auto-detected:" << info.portName() << info.description();
-                break;
+    // 延迟所有串口操作到事件循环启动后，避免构造期间阻塞 UI 线程
+    // QSerialPortInfo::availablePorts() 在 Windows 上可能耗时 100-500ms
+    QTimer::singleShot(0, this, [this] {
+        const auto ports = QSerialPortInfo::availablePorts();
+
+        // Prefer a CH340 / USB-TTL adapter if present; allow override via env var.
+        QString envPort = QString::fromLocal8Bit(qgetenv("LIGHT_SENSOR_PORT"));
+        if (!envPort.isEmpty()) {
+            lightSensor->setPreferredPort(envPort);
+            qDebug() << "[LightSensor] preferred port from env:" << envPort;
+        } else {
+            for (const QSerialPortInfo &info : ports) {
+                QString desc = info.description().toUpper();
+                if (desc.contains("CH340") || desc.contains("USB-SERIAL")) {
+                    lightSensor->setPreferredPort(info.portName());
+                    qDebug() << "[LightSensor] preferred port auto-detected:" << info.portName() << info.description();
+                    break;
+                }
             }
         }
-    }
 
-    // Thresholds can be tuned via env vars (higher ADC == darker for this sensor).
-    QByteArray envDay = qgetenv("LIGHT_SENSOR_DAY_THRESHOLD");
-    QByteArray envNight = qgetenv("LIGHT_SENSOR_NIGHT_THRESHOLD");
-    if (!envDay.isEmpty() && !envNight.isEmpty()) {
-        lightSensor->setNightThresholdLow(envDay.toInt());
-        lightSensor->setNightThresholdHigh(envNight.toInt());
-        qDebug() << "[LightSensor] thresholds from env: day<" << envDay.toInt()
-                 << ", night>" << envNight.toInt();
-    }
+        // Thresholds can be tuned via env vars (higher ADC == darker for this sensor).
+        QByteArray envDay = qgetenv("LIGHT_SENSOR_DAY_THRESHOLD");
+        QByteArray envNight = qgetenv("LIGHT_SENSOR_NIGHT_THRESHOLD");
+        if (!envDay.isEmpty() && !envNight.isEmpty()) {
+            lightSensor->setNightThresholdLow(envDay.toInt());
+            lightSensor->setNightThresholdHigh(envNight.toInt());
+            qDebug() << "[LightSensor] thresholds from env: day<" << envDay.toInt()
+                     << ", night>" << envNight.toInt();
+        }
 
-    lightSensor->start();
+        // 传递已获取的端口列表，避免 start() 内部重复调用 availablePorts()
+        lightSensor->start(ports);
+    });
 
     setRenderHint(QPainter::Antialiasing, true);
     setRenderHint(QPainter::TextAntialiasing, true);
