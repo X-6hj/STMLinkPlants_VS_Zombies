@@ -166,9 +166,14 @@ GameScene::GameScene(GameLevelData *gameLevelData)
             subTitle->setParentItem(levelSub);
 
             QList<QPair<QString, QString>> lvls;
-            lvls.append({"1", tr("Level 1-1")});
-            lvls.append({"2", tr("Level 2-1 (Night)")});
-            lvls.append({"3", tr("Level 1-3")});
+                lvls.append({"1", tr("Level 1-1")});
+                lvls.append({"3", tr("Level 1-2")});
+                lvls.append({"4", tr("Level 1-3")});      
+                lvls.append({"5", tr("Level 1-4")});      
+                lvls.append({"7", tr("Level 1-5")}); 
+                lvls.append({"2", tr("Level 2-1 (Night)")});    
+                lvls.append({"6", tr("Level 2-2 (Night)")}); 
+                lvls.append({"8", tr("Level 2-3 (Night)")});
 
             for (int i = 0; i < lvls.size(); ++i) {
                 MouseEventRectItem *lbtn = new MouseEventRectItem(QRectF(0, 0, 320, 44));
@@ -535,6 +540,9 @@ void GameScene::loadAcessFinished()
     }
 }
 
+
+
+//光敏传感器白天转换为黑夜的切换
 void GameScene::setNightMode(bool night)
 {
     // 夜晚关卡（dKind == 0）始终维持黑暗模式，不受传感器控制
@@ -544,8 +552,38 @@ void GameScene::setNightMode(bool night)
         return;
     isNightMode = night;
     QPointF pos = background->pos();
-    background->setPixmap(gImageCache->load(night ? "interface/background2.jpg" : "interface/background1.jpg"));
+
+    QString nightBg;
+
+
+    //三个需要切换的白天的图
+    if (gameLevelData->eName == "4")           // Level 1-4
+        nightBg = "interface/background4.jpg";
+    else if (gameLevelData->eName == "7")      // Level 1-5
+        nightBg = "interface/background6boss.jpg";
+    else if(gameLevelData->eName == "5")    // Level 1-3
+        nightBg = "interface/background2.jpg"; // 默认黑夜背景
+    else if(gameLevelData->eName == "1")    // Level 1-1
+        nightBg = "interface/background1unsodded1.jpg"; // 原图
+    else if(gameLevelData->eName == "3")    // Level 1-2
+        nightBg = "interface/background1unsodded2.jpg"; // 原图
+    else
+        nightBg = "interface/background2.jpg"; // 默认黑夜背景
+
+    background->setPixmap(gImageCache->load(night ? nightBg : gameLevelData->backgroundImage));
     background->setPos(pos);
+
+    // 非永久夜晚关卡（dKind != 0）：光敏传感器触发的昼夜切换
+    if (gameLevelData->dKind != 0) {
+
+        // 控制阳光掉落：黑夜不产阳光，白天恢复
+        gameLevelData->produceSun = !night;
+
+        // 通知所有植物昼夜切换（蘑菇休眠/苏醒）
+        for (auto *plant : plantInstances) {
+            plant->onDayNightChanged(night);
+        }
+    }
 }
 
 bool GameScene::nightMode() const
@@ -850,15 +888,18 @@ QPair<MoviePixmapItem *, std::function<void(bool)> > GameScene::newSun(int sunNu
 
 void GameScene::beginSun(int sunNum)
 {
-    auto sunGifAndOnFinished = newSun(sunNum);
-    MoviePixmapItem *sunGif = sunGifAndOnFinished.first;
-    std::function<void(bool)> onFinished = sunGifAndOnFinished.second;
-    double toX = coordinate.getX(1 + qrand() % coordinate.colCount()),
-           toY = coordinate.getY(1 + qrand() % coordinate.rowCount());
-    sunGif->setPos(toX, -100);
-    sunGif->start();
-    Animate(sunGif).move(QPointF(toX, toY - 53)).speed(0.04).finish(onFinished);
-
+    // 仅在白天（produceSun == true）时实际掉落阳光
+    if (gameLevelData->produceSun) {
+        auto sunGifAndOnFinished = newSun(sunNum);
+        MoviePixmapItem *sunGif = sunGifAndOnFinished.first;
+        std::function<void(bool)> onFinished = sunGifAndOnFinished.second;
+        double toX = coordinate.getX(1 + qrand() % coordinate.colCount()),
+               toY = coordinate.getY(1 + qrand() % coordinate.rowCount());
+        sunGif->setPos(toX, -100);
+        sunGif->start();
+        Animate(sunGif).move(QPointF(toX, toY - 53)).speed(0.04).finish(onFinished);
+    }
+    // 保持定时器循环：无论昼夜都继续调度，确保切换回白天时能恢复掉阳光
     (new Timer(this, (qrand() % 9000 + 3000), [this, sunNum] { beginSun(sunNum); }))->start();
 }
 

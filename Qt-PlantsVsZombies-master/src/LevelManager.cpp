@@ -104,20 +104,21 @@ void LevelManager::triggerWin()
     winOverlay->setOpacity(0.0);
     scene->addItem(winOverlay);
 
+
+    // 等待 1.5 秒后淡入 trophy 画面，之后等待 2 秒再进入下一关
     Animate(winOverlay).fade(1.0).duration(1500).finish([this, winOverlay] {
-        // 等待 2 秒后进入下一关
         (new Timer(scene, 2000, [this, winOverlay] {
             scene->removeItem(winOverlay);
             delete winOverlay;
-            // 计算下一关卡编号
             QString currentEName = levelData->eName;
             int nextNum = currentEName.toInt() + 1;
             QString nextEName = QString::number(nextNum);
-            // 如果下一关不存在，返回主菜单
-            if (nextNum > 3) {
-                gMainView->switchToMenuScene();
-            } else {
+            GameLevelData *probe = GameLevelDataFactory(nextEName);
+            if (probe) {
+                delete probe;
                 gMainView->switchToGameScene(nextEName);
+            } else {
+                gMainView->switchToMenuScene();
             }
         }))->start();
     });

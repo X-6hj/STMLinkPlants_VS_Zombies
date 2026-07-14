@@ -52,6 +52,7 @@ private:
     QRegularExpression dataRegex;
 
     bool connected;
+    bool stopping;  // 标记正在停止，防止 pending 回调重新打开端口
     int lastAdc;
     float lastVolts;
 

@@ -167,7 +167,7 @@ void LightSensorReader::tryReconnect()
     if (m_connected)
         return;
 
-    retryCount++;
+    // retryCount 由 onWorkerScanFinished 负责递增，此处不重复计数
     if (retryCount > MAX_RETRY_COUNT) {
         emit logMessage(tr("Light sensor: max retries exceeded, stopping scan"));
         reconnectTimer->stop();

@@ -13,6 +13,7 @@ SerialWorker::SerialWorker(QObject *parent)
       portTimeoutTimer(new QTimer(this)),
       dataRegex("Light ADC:\\s*(\\d+),\\s*Voltage:\\s*([\\d.]+)V"),
       connected(false),
+      stopping(false),
       lastAdc(0),
       lastVolts(0.0f),
       scanIndex(0)
@@ -34,6 +35,7 @@ SerialWorker::~SerialWorker()
 
 void SerialWorker::startScan(const QList<QSerialPortInfo> &ports)
 {
+    stopping = false;
     scanIndex = 0;
     candidatePorts.clear();
 
@@ -74,6 +76,7 @@ void SerialWorker::startScan(const QList<QSerialPortInfo> &ports)
 
 void SerialWorker::stop()
 {
+    stopping = true;
     portTimeoutTimer->stop();
     closePort();
 }
@@ -110,6 +113,7 @@ void SerialWorker::closePort()
 
 void SerialWorker::tryNextCandidate()
 {
+    if (stopping) return;  // 正在停止，防止 pending 回调重新打开端口
     closePort();
 
     if (scanIndex >= candidatePorts.size()) {

@@ -89,7 +89,7 @@ public:
     virtual void judgeAttack();
     virtual void normalAttack(PlantInstance *plant);
     virtual void crushDie();
-    virtual void getPea(int attack, int direction);
+    virtual void getPea(int attack, int direction, int type);
     virtual void getHit(int attack);
     virtual void autoReduceHp();
     virtual void normalDie();
@@ -99,6 +99,14 @@ public:
 
     // 共享音频播放器池（避免每个僵尸实例创建独立的QMediaPlayer）
     static QMediaPlayer *getSharedAudioPlayer();
+
+        // ===== 魅惑相关（用于魅惑菇） =====
+    bool isHypnotized;                    // 是否被魅惑（友方）
+    QUuid attackTargetZombieUuid;        // 普通僵尸攻击被魅惑僵尸的目标 UUID
+    QUuid hypnotizedTargetUuid;          // 被魅惑僵尸攻击普通僵尸的目标 UUID
+    int hypnotizedAttackTick;            // 被魅惑僵尸攻击计数（用于每秒伤害）
+    void hypnotize();                    // 被魅惑时调用
+
 
     QUuid uuid;
     int hp;
@@ -306,6 +314,7 @@ class SnorkelZombie: public Zombie1
     Q_DECLARE_TR_FUNCTIONS(SnorkelZombie)
 public:
     SnorkelZombie();
+    virtual bool canPass(int row) const override;
 };
 
 class SnorkelZombieInstance: public ZombieInstance
@@ -314,7 +323,7 @@ public:
     SnorkelZombieInstance(const Zombie *zombie);
     virtual void checkActs() override;
     virtual void getHit(int attack) override;
-    virtual void getPea(int attack, int direction) override;
+    virtual void getPea(int attack, int direction, int type) override;
 private:
     bool submerged;
     bool transitioning;  // 正在播放浮出/潜水过渡动画
@@ -328,6 +337,7 @@ class DolphinRiderZombie: public Zombie1
     Q_DECLARE_TR_FUNCTIONS(DolphinRiderZombie)
 public:
     DolphinRiderZombie();
+    virtual bool canPass(int row) const override;
 };
 
 class DolphinRiderZombieInstance: public ZombieInstance
@@ -360,6 +370,7 @@ class DuckyTubeZombie1: public Zombie1
     Q_DECLARE_TR_FUNCTIONS(DuckyTubeZombie1)
 public:
     DuckyTubeZombie1();
+    virtual bool canPass(int row) const override;
 };
 
 // ---------- 路障鸭子僵尸 ----------
@@ -368,6 +379,7 @@ class DuckyTubeZombie2: public OrnZombie1
     Q_DECLARE_TR_FUNCTIONS(DuckyTubeZombie2)
 public:
     DuckyTubeZombie2();
+    virtual bool canPass(int row) const override;
 };
 
 class DuckyTubeZombie2Instance: public OrnZombieInstance1
@@ -383,6 +395,7 @@ class DuckyTubeZombie3: public OrnZombie1
     Q_DECLARE_TR_FUNCTIONS(DuckyTubeZombie3)
 public:
     DuckyTubeZombie3();
+    virtual bool canPass(int row) const override;
 };
 
 class DuckyTubeZombie3Instance: public OrnZombieInstance1

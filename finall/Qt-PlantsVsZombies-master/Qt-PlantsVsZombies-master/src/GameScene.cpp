@@ -1,0 +1,1395 @@
+//
+// Created by sun on 8/26/16.
+//
+
+#include <QtAlgorithms>
+#include <stdlib.h>
+#include <math.h>
+#include <algorithm>
+#include "GameScene.h"
+#include "MainView.h"
+#include "ImageManager.h"
+#include "Timer.h"
+#include "Plant.h"
+#include "Zombie.h"
+#include "GameLevelData.h"
+#include "MouseEventPixmapItem.h"
+#include "PlantCardItem.h"
+#include "Animate.h"
+#include "LevelManager.h"
+#include <QtMultimedia>
+
+GameScene::GameScene(GameLevelData *gameLevelData)
+        : QGraphicsScene(0, 0, 900, 600),
+          gameLevelData(gameLevelData),
+          background(new QGraphicsPixmapItem(gImageCache->load(gameLevelData->backgroundImage))),
+          gameGroup(new QGraphicsItemGroup),
+          infoText(new QGraphicsSimpleTextItem),
+          infoTextGroup(new QGraphicsRectItem(0, 0, 900, 50)),
+          menuGroup(new MouseEventPixmapItem(gImageCache->load("interface/Button.png"))),
+          menuPopup(new QGraphicsItemGroup),
+          menuPopupBack(new QGraphicsPixmapItem(gImageCache->load("interface/OptionsMenuback8.png"))),
+          sunNumText(new QGraphicsSimpleTextItem(QString::number(gameLevelData->sunNum))),
+          sunNumGroup(new QGraphicsPixmapItem(gImageCache->load("interface/SunBack.png"))),
+          selectCardButtonReset(new MouseEventPixmapItem(gImageCache->load("interface/SelectCardButton.png"))),
+          selectCardButtonOkay(new MouseEventPixmapItem(gImageCache->load("interface/SelectCardButton.png"))),
+          selectCardTextReset(new QGraphicsSimpleTextItem(tr("Reset"))),
+          selectCardTextOkay(new QGraphicsSimpleTextItem(tr("Go"))),
+          selectingPanel(new QGraphicsPixmapItem(gImageCache->load("interface/SeedChooser_Background.png"))),
+          cardPanel(new QGraphicsItemGroup),
+          shovel(new QGraphicsPixmapItem(gImageCache->load("interface/Shovel.png"))),
+          shovelBackground(new QGraphicsPixmapItem(gImageCache->load("interface/ShovelBack.png"))),
+          movePlantAlpha(new QGraphicsPixmapItem),
+          movePlant(new QGraphicsPixmapItem),
+          imgGrowSoil(new MoviePixmapItem("interface/GrowSoil.gif")),
+          imgGrowSpray(new MoviePixmapItem("interface/GrowSpray.gif")),
+          flagMeter(new FlagMeter(gameLevelData)),
+          backgroundMusic(new QMediaPlayer(this)),
+          tapMusic(new QMediaPlayer(this)),
+          sunMusic(new QMediaPlayer(this)),
+          shovelMusic(new QMediaPlayer(this)),
+          seedliftMusic(new QMediaPlayer(this)),
+          plantMusic1(new QMediaPlayer(this)),
+          plantMusic2(new QMediaPlayer(this)),
+          groanMusic(new QMediaPlayer(this)),
+          waveMusic(new QMediaPlayer(this)),
+          coordinate(gameLevelData->coord),
+          choose(0), sunNum(gameLevelData->sunNum),
+          waveTimer(nullptr), monitorTimer(nullptr), waveNum(0),
+          isNightMode(gameLevelData->backgroundImage.contains("background2")),
+          paused(false),
+          levelManager(new LevelManager(this, gameLevelData))
+{
+    // Process ProtoTypes
+    for (const auto &eName: gameLevelData->pName)
+        plantProtoTypes.insert(eName, PlantFactory(this, eName));
+    for (const auto &eName: gameLevelData->zName)
+        zombieProtoTypes.insert(eName, ZombieFactory(this, eName));
+    // z-value -- 0: normal 1: tooltip 2: dialog
+    // Background (parent of the zombies displayed on the road)
+    addItem(background);
+    if (gameLevelData->showScroll) {
+        QList<qreal> yPos;
+        QList<Zombie *> zombies;
+        for (const auto &zombieData: gameLevelData->zombieData) {
+            Zombie *item = getZombieProtoType(zombieData.eName);
+            if(item->canDisplay) {
+                for (int i = 0; i < zombieData.num; ++i) {
+                    yPos.push_back(qFloor(100 +  qrand() % 400));
+                    zombies.push_back(item);
+                }
+            }
+        }
+        qSort(yPos.begin(), yPos.end());
+        std::random_shuffle(zombies.begin(), zombies.end());
+        for (int i = 0; i < zombies.size(); ++i) {
+            MoviePixmapItem *pixmap = new MoviePixmapItem(zombies[i]->standGif);
+            QSizeF size = pixmap->boundingRect().size();
+            pixmap->setPos(qFloor(1115 + qrand() % 200) - size.width() * 0.5, yPos[i] - size.width() * 0.5);
+            pixmap->setParentItem(background);
+        }
+    }
+    // Plants, zombies and sun
+    gameGroup->setHandlesChildEvents(false);
+    addItem(gameGroup);
+    // Information text
+    infoText->setBrush(Qt::white);
+    infoText->setFont(QFont("SimHei", 16, QFont::Bold));
+    infoText->setParentItem(infoTextGroup);
+    infoTextGroup->setPos(0, 500);
+    infoTextGroup->setPen(Qt::NoPen);
+    infoTextGroup->setBrush(QColor::fromRgb(0x5b432e));
+    infoTextGroup->setOpacity(0);
+    addItem(infoTextGroup);
+    // Menu
+    QGraphicsSimpleTextItem *menuText = new QGraphicsSimpleTextItem(tr("Menu"));
+    menuText->setBrush(QColor::fromRgb(0x00cb08));
+    menuText->setFont(QFont("SimHei", 12, QFont::Bold));
+    menuText->setParentItem(menuGroup);
+    menuText->setPos(sizeToPoint(menuGroup->boundingRect().size() - menuText->boundingRect().size()) / 2);
+    menuGroup->setPos(sceneRect().topRight() - sizeToPoint(menuGroup->boundingRect().size()));
+    menuGroup->setCursor(Qt::PointingHandCursor);
+    addItem(menuGroup);
+    // In-game Menu Popup
+    {
+        menuPopup->setZValue(100);
+        menuPopup->setVisible(false);
+        menuPopup->setHandlesChildEvents(false);
+        addItem(menuPopup);
+
+        QSizeF backSize = menuPopupBack->boundingRect().size();
+        QPointF backPos = sizeToPoint(sceneRect().size() - backSize) / 2;
+        menuPopupBack->setPos(backPos);
+        menuPopup->addToGroup(menuPopupBack);
+
+        // Helper: create a centered text button
+        auto makeTextBtn = [this](const QString &text, QPointF pos) -> MouseEventRectItem* {
+            MouseEventRectItem *btn = new MouseEventRectItem(QRectF(0, 0, 160, 36));
+            btn->setPen(QPen(QColor(0x6b, 0x4a, 0x28), 2));
+            btn->setBrush(QColor(0xd4, 0xa0, 0x5a, 200));
+            btn->setPos(pos);
+            btn->setCursor(Qt::PointingHandCursor);
+            menuPopup->addToGroup(btn);
+
+            QGraphicsSimpleTextItem *label = new QGraphicsSimpleTextItem(text);
+            label->setFont(QFont("SimHei", 11, QFont::Bold));
+            label->setBrush(QColor(0x4a, 0x2a, 0x0a));
+            QSizeF sz = label->boundingRect().size();
+            label->setPos((160 - sz.width()) / 2, (36 - sz.height()) / 2);
+            label->setParentItem(btn);
+            return btn;
+        };
+
+        // 2 buttons centered vertically; 160 wide, backSize.width centered
+        qreal btnX = backPos.x() + (backSize.width() - 160) / 2.0;
+        qreal btnGap = 12;
+        qreal totalBtnH = 36 * 2 + btnGap;
+        qreal btnStartY = backPos.y() + (backSize.height() - totalBtnH) / 2.0;
+
+        // 关卡 (Level) button — centered
+        MouseEventRectItem *levelBtn = makeTextBtn(tr("关卡"), QPointF(btnX, btnStartY));
+        connect(levelBtn, &MouseEventRectItem::clicked, [this] {
+            tapMusic->stop(); tapMusic->play();
+            menuPopup->setVisible(false);
+            gPaused = false;  // 重置全局暂停标志（旧场景即将销毁，不需要恢复定时器）
+            // Show level sub-panel
+            QGraphicsPixmapItem *levelSub = new QGraphicsPixmapItem(gImageCache->load("interface/SeedChooser_Background.png"));
+            levelSub->setPos(250, 100);
+            levelSub->setZValue(101);
+            addItem(levelSub);
+
+            QGraphicsSimpleTextItem *subTitle = new QGraphicsSimpleTextItem(tr("Choose Your Level"));
+            subTitle->setBrush(QColor(0xf0, 0xc0, 0x60));
+            subTitle->setFont(QFont("SimHei", 14, QFont::Bold));
+            QSizeF tSz = subTitle->boundingRect().size();
+            subTitle->setPos((levelSub->boundingRect().width() - tSz.width()) / 2, 12);
+            subTitle->setParentItem(levelSub);
+
+            QList<QPair<QString, QString>> lvls;
+                lvls.append({"1", tr("Level 1-1")});
+                lvls.append({"3", tr("Level 1-2")});
+                lvls.append({"4", tr("Level 1-3")});      
+                lvls.append({"5", tr("Level 1-4")});      
+                lvls.append({"7", tr("Level 1-5")}); 
+                lvls.append({"2", tr("Level 2-1 (Night)")});    
+                lvls.append({"6", tr("Level 2-2 (Night)")}); 
+                lvls.append({"8", tr("Level 2-3 (Night)")});
+
+            for (int i = 0; i < lvls.size(); ++i) {
+                MouseEventRectItem *lbtn = new MouseEventRectItem(QRectF(0, 0, 320, 44));
+                lbtn->setPen(QPen(QColor(0x6b, 0x4a, 0x28), 2));
+                lbtn->setBrush(QColor(0xd4, 0xa0, 0x5a, 200));
+                lbtn->setPos(40, 50 + i * 52);
+                lbtn->setCursor(Qt::PointingHandCursor);
+                lbtn->setParentItem(levelSub);
+
+                QGraphicsSimpleTextItem *ltxt = new QGraphicsSimpleTextItem(lvls[i].second);
+                ltxt->setFont(QFont("SimHei", 12, QFont::Bold));
+                ltxt->setBrush(QColor(0x4a, 0x2a, 0x0a));
+                QSizeF lsz = ltxt->boundingRect().size();
+                ltxt->setPos((320 - lsz.width()) / 2, (44 - lsz.height()) / 2);
+                ltxt->setParentItem(lbtn);
+
+                QString lvlEName = lvls[i].first;
+                connect(lbtn, &MouseEventRectItem::clicked, [this, levelSub, lvlEName] {
+                    tapMusic->stop(); tapMusic->play();
+                    removeItem(levelSub);
+                    delete levelSub;
+                    backgroundMusic->stop();
+                    gMainView->switchToGameScene(lvlEName);
+                });
+                connect(lbtn, &MouseEventRectItem::hoverEntered, [this, lbtn] {
+                    lbtn->setBrush(QColor(0xf0, 0xb0, 0x60, 220));
+                });
+                connect(lbtn, &MouseEventRectItem::hoverLeft, [this, lbtn] {
+                    lbtn->setBrush(QColor(0xd4, 0xa0, 0x5a, 200));
+                });
+            }
+
+            // Close sub-panel button
+            MouseEventRectItem *closeSub = new MouseEventRectItem(QRectF(0, 0, 80, 30));
+            closeSub->setPen(QPen(QColor(0x8b, 0x3a, 0x3a), 2));
+            closeSub->setBrush(QColor(0xc0, 0x40, 0x40, 200));
+            closeSub->setPos((levelSub->boundingRect().width() - 80) / 2,
+                             levelSub->boundingRect().height() - 45);
+            closeSub->setCursor(Qt::PointingHandCursor);
+            closeSub->setParentItem(levelSub);
+
+            QGraphicsSimpleTextItem *closeLbl = new QGraphicsSimpleTextItem(tr("Back"));
+            closeLbl->setFont(QFont("SimHei", 12, QFont::Bold));
+            closeLbl->setBrush(Qt::white);
+            QSizeF csz = closeLbl->boundingRect().size();
+            closeLbl->setPos((80 - csz.width()) / 2, (30 - csz.height()) / 2);
+            closeLbl->setParentItem(closeSub);
+
+            // Shared deleted flag to prevent double-free (B1 fix)
+            QSharedPointer<bool> deleted(new bool(false));
+
+            connect(closeSub, &MouseEventRectItem::clicked, [this, levelSub, deleted] {
+                if (*deleted) return;
+                *deleted = true;
+                tapMusic->stop(); tapMusic->play();
+                removeItem(levelSub);
+                delete levelSub;
+            });
+
+            // Click outside the panel to close it
+            QSharedPointer<QMetaObject::Connection> outsideConn(new QMetaObject::Connection);
+            *outsideConn = connect(this, &GameScene::mousePress, [this, levelSub, outsideConn, deleted](QGraphicsSceneMouseEvent *ev) {
+                if (*deleted) {
+                    disconnect(*outsideConn);
+                    return;
+                }
+                if (!levelSub->contains(ev->scenePos() - levelSub->scenePos())) {
+                    *deleted = true;
+                    disconnect(*outsideConn);
+                    removeItem(levelSub);
+                    delete levelSub;
+                }
+            });
+        });
+
+        // 退出 (Quit to menu) button — centered below level
+        MouseEventRectItem *quitBtn = makeTextBtn(tr("退出"), QPointF(btnX, btnStartY + 36 + btnGap));
+        connect(quitBtn, &MouseEventRectItem::clicked, [this] {
+            tapMusic->stop(); tapMusic->play();
+            menuPopup->setVisible(false);
+            backgroundMusic->stop();
+            gPaused = false;  // 重置全局暂停标志，避免新场景定时器卡死
+            gMainView->switchToMenuScene();
+        });
+
+        // 关闭 popup — click background outside or any game click closes it
+    }
+    // Sun number
+    sunNumText->setFont(QFont("Verdana", 16, QFont::Bold));
+    QSizeF sunNumTextSize = sunNumText->boundingRect().size();
+    sunNumText->setPos(76 - sunNumTextSize.width() / 2,
+                       (sunNumGroup->boundingRect().height() - sunNumTextSize.height()) / 2);
+    sunNumText->setParentItem(sunNumGroup);
+    sunNumGroup->setPos(100, 560);
+    sunNumGroup->setVisible(false);
+    addItem(sunNumGroup);
+    // Select Card
+    if (gameLevelData->canSelectCard && gameLevelData->maxSelectedCards > 0) {
+        // Title
+        QGraphicsSimpleTextItem *selectCardTitle = new QGraphicsSimpleTextItem(tr("Choose your cards"));
+        selectCardTitle->setBrush(QColor::fromRgb(0xf0c060));
+        selectCardTitle->setFont(QFont("NSimSun", 12, QFont::Bold));
+        QSizeF selectCardTitleSize = selectCardTitle->boundingRect().size();
+        selectCardTitle->setPos((selectingPanel->boundingRect().width() - selectCardTitleSize.width()) / 2,
+                                15 - selectCardTitleSize.height() / 2);
+        selectCardTitle->setParentItem(selectingPanel);
+        // Reset button
+        selectCardTextReset->setBrush(QColor::fromRgb(0x808080));
+        selectCardTextReset->setFont(QFont("SimHei", 12, QFont::Bold));
+        selectCardTextReset->setPos(sizeToPoint(selectCardButtonReset->boundingRect().size()
+                                                - selectCardTextReset->boundingRect().size()) / 2);
+        selectCardTextReset->setParentItem(selectCardButtonReset);
+        selectCardButtonReset->setPos(162, 500);
+        selectCardButtonReset->setEnabled(false);
+        selectCardButtonReset->setParentItem(selectingPanel);
+        // Okay button
+        selectCardTextOkay->setBrush(QColor::fromRgb(0x808080));
+        selectCardTextOkay->setFont(QFont("SimHei", 12, QFont::Bold));
+        selectCardTextOkay->setPos(sizeToPoint(selectCardButtonOkay->boundingRect().size()
+                                               - selectCardTextOkay->boundingRect().size()) / 2);
+        selectCardTextOkay->setParentItem(selectCardButtonOkay);
+        selectCardButtonOkay->setPos(237, 500);
+        selectCardButtonOkay->setEnabled(false);
+        selectCardButtonOkay->setParentItem(selectingPanel);
+        // Plant cards to select
+        int cardIndex = 0;
+        for (auto item: plantProtoTypes.values()) {
+            if (!item->canSelect) continue;
+            // Plant cards
+            PlantCardItem *plantCardItem = new PlantCardItem(item, true);
+            plantCardItem->setPos(15 + cardIndex % 6 * 72, 40 + cardIndex / 6 * 50);
+            plantCardItem->setCursor(Qt::PointingHandCursor);
+            plantCardItem->setParentItem(selectingPanel);
+            // Tooltip
+            QString tooltipText = "<b>" + item->cName + "</b><br />" +
+                    QString(tr("Cool down: %1s")).arg(item->coolTime) + "<br />";
+            if (gameLevelData->dKind != 0 && item->night)
+                tooltipText += "<span style=\"color:#F00\">" + tr("Nocturnal - sleeps during day") + "</span><br>";
+            tooltipText += item->toolTip;
+            TooltipItem *tooltipItem = new TooltipItem(tooltipText);
+            tooltipItem->setVisible(false);
+            tooltipItem->setOpacity(0.9);
+            tooltipItem->setZValue(1);
+            addItem(tooltipItem);
+            // Displaying tooltip when hovering
+            QPointF posDelta(5, 15);
+            connect(plantCardItem, &PlantCardItem::hoverEntered, [tooltipItem, posDelta](QGraphicsSceneHoverEvent *event) {
+                tooltipItem->setPos(event->scenePos() + posDelta);
+                tooltipItem->setVisible(true);
+            });
+            connect(plantCardItem, &PlantCardItem::hoverMoved, [tooltipItem, posDelta](QGraphicsSceneHoverEvent *event) {
+                tooltipItem->setPos(event->scenePos() + posDelta);
+            });
+            connect(plantCardItem, &PlantCardItem::hoverLeft, [tooltipItem, posDelta](QGraphicsSceneHoverEvent *event) {
+                tooltipItem->setPos(event->scenePos() + posDelta);
+                tooltipItem->setVisible(false);
+            });
+            // Move and scale to selected card panel when clicking
+            connect(plantCardItem, &PlantCardItem::clicked, [this, item, plantCardItem] {
+                // Check
+                if (!plantCardItem->isChecked()) return;
+                tapMusic->stop();
+                tapMusic->play();
+                int count = selectedPlantArray.size();
+                if (this->gameLevelData->maxSelectedCards > 0 && count >= this->gameLevelData->maxSelectedCards)
+                    return;
+                // Okay
+                plantCardItem->setChecked(false);
+                PlantCardItem *selectedPlantCardItem = new PlantCardItem(item, true);
+                selectedPlantCardItem->setPos(plantCardItem->scenePos());
+                cardPanel->addToGroup(selectedPlantCardItem);
+                selectedPlantArray.push_back(item);
+                if (count == 0) {
+                    selectCardTextReset->setBrush(QColor::fromRgb(0xf0c060));
+                    selectCardTextOkay->setBrush(QColor::fromRgb(0xf0c060));
+                    selectCardButtonReset->setEnabled(true);
+                    selectCardButtonOkay->setEnabled(true);
+                    selectCardButtonReset->setCursor(Qt::PointingHandCursor);
+                    selectCardButtonOkay->setCursor(Qt::PointingHandCursor);
+                }
+                Animate(selectedPlantCardItem).move(QPointF(0, 60 * count)).scale(1).speed(1).replace().finish();
+                // Move and scale back to unselected card panel when clicking
+                QSharedPointer<QMetaObject::Connection> deselectConnnection(new QMetaObject::Connection), resetConnnection(new QMetaObject::Connection);
+                auto deselectFunctor = [this, item, plantCardItem, selectedPlantCardItem, deselectConnnection, resetConnnection] {
+                    disconnect(*deselectConnnection);
+                    disconnect(*resetConnnection);
+                    cardPanel->removeFromGroup(selectedPlantCardItem);
+                    selectedPlantArray.removeOne(item);
+                    if (selectedPlantArray.size() == 0) {
+                        selectCardTextReset->setBrush(QColor::fromRgb(0x808080));
+                        selectCardTextOkay->setBrush(QColor::fromRgb(0x808080));
+                        selectCardButtonReset->setEnabled(false);
+                        selectCardButtonOkay->setEnabled(false);
+                        selectCardButtonReset->setCursor(Qt::ArrowCursor);
+                        selectCardButtonOkay->setCursor(Qt::ArrowCursor);
+                    }
+                    Animate(selectedPlantCardItem).move(plantCardItem->scenePos()).scale(0.7).speed(1).replace().finish(
+                        [plantCardItem, selectedPlantCardItem] {
+                            plantCardItem->setChecked(true);
+                            delete selectedPlantCardItem;
+                    });
+                };
+                *deselectConnnection = connect(selectedPlantCardItem, &PlantCardItem::clicked, [this, selectedPlantCardItem, deselectFunctor] {
+                    tapMusic->stop();
+                    tapMusic->play();
+                    QList<QGraphicsItem *> selectedCards = cardPanel->childItems();
+                    for (int i = qFind(selectedCards, selectedPlantCardItem) - selectedCards.begin() + 1; i != selectedCards.size(); ++i)
+                        Animate(selectedCards[i]).move(QPointF(0, 60 * (i - 1))).speed(1).replace().finish();
+                    deselectFunctor();
+                });
+                *resetConnnection = connect(selectCardButtonReset, &MouseEventPixmapItem::clicked, deselectFunctor);
+            });
+            ++cardIndex;
+        }
+        connect(selectCardButtonOkay, &MouseEventPixmapItem::clicked, [this] { tapMusic->stop(); tapMusic->play(); });
+        connect(selectCardButtonReset, &MouseEventPixmapItem::clicked, [this] { tapMusic->stop(); tapMusic->play(); });
+        selectingPanel->setPos(100, -selectingPanel->boundingRect().height());
+        addItem(selectingPanel);
+    }
+    // Selected card
+    cardPanel->setHandlesChildEvents(false);
+    addItem(cardPanel);
+    shovel->setPos(0, -5);
+    shovel->setCursor(Qt::PointingHandCursor);
+    shovel->setParentItem(shovelBackground);
+    shovelBackground->setPos(235, -100);
+    shovelBackground->setCursor(Qt::PointingHandCursor);
+    shovelBackground->setZValue(1);
+    addToGame(shovelBackground);
+    // Move plant
+    movePlantAlpha->setOpacity(0.4);
+    movePlantAlpha->setVisible(false);
+    movePlantAlpha->setZValue(30);
+    gameGroup->addToGroup(movePlantAlpha);
+    movePlant->setVisible(false);
+    movePlant->setZValue(254);
+    addItem(movePlant);
+    // Effects for growing plants
+    imgGrowSoil->setVisible(false);
+    imgGrowSoil->setZValue(50);
+    gameGroup->addToGroup(imgGrowSoil);
+    imgGrowSpray->setVisible(false);
+    imgGrowSpray->setZValue(50);
+    gameGroup->addToGroup(imgGrowSpray);
+    // Flag progress
+    flagMeter->setPos(700, 610);
+    addItem(flagMeter);
+
+    connect(backgroundMusic, &QMediaPlayer::stateChanged, [this](QMediaPlayer::State state) {
+        if (state == QMediaPlayer::StoppedState)
+            backgroundMusic->play();
+    });
+    tapMusic->setMedia(QUrl("qrc:/audio/tap.mp3"));
+    sunMusic->setMedia(QUrl("qrc:/audio/points.mp3"));
+    shovelMusic->setMedia(QUrl("qrc:/audio/shovel.mp3"));
+    seedliftMusic->setMedia(QUrl("qrc:/audio/seedlift.mp3"));
+    plantMusic1->setMedia(QUrl("qrc:/audio/plant1.mp3"));
+    plantMusic2->setMedia(QUrl("qrc:/audio/plant2.mp3"));
+    // Menu popup toggle
+    connect(menuGroup, &MouseEventPixmapItem::clicked, [this] {
+        tapMusic->stop(); tapMusic->play();
+        bool visible = !menuPopup->isVisible();
+        menuPopup->setVisible(visible);
+        setPaused(visible);  // 打开菜单时暂停游戏，关闭时恢复
+    });
+    // Plant Triggers & Zombie Rows
+    for (int i = 0; i <= coordinate.rowCount(); ++i) {
+        plantTriggers.push_back(QList<Trigger *>());
+        zombieRow.push_back(QList<ZombieInstance *>());
+    }
+}
+
+GameScene::~GameScene()
+{
+    for (int i = 0; i < coordinate.rowCount(); ++i) {
+        for (auto item: plantTriggers[i])
+            delete item;
+    }
+    for (auto i: plantProtoTypes.values())
+        delete i;
+    for (auto i: zombieProtoTypes.values())
+        delete i;
+    for (auto i: plantInstances)
+        delete i;
+    for (auto i: zombieInstances)
+        delete i;
+
+    delete gameLevelData;
+}
+
+void GameScene::setInfoText(const QString &text)
+{
+    if (text.isEmpty())
+        Animate(infoTextGroup).fade(0).duration(200).finish();
+    else {
+        infoText->setText(text);
+        infoText->setPos(sizeToPoint(infoTextGroup->boundingRect().size() - infoText->boundingRect().size()) / 2);
+        Animate(infoTextGroup).fade(0.8).duration(200).finish();
+    }
+}
+
+void GameScene::loadReady()
+{
+    gMainView->getMainWindow()->setWindowTitle(tr("Plants vs. Zombies") + " - " + gameLevelData->cName);
+    // 预加载常用资源，减少首帧卡顿
+    gImageCache->preload({
+        "interface/Shovel.png", "interface/ShovelBackground.png",
+        "interface/SelectorScreen.png", "interface/ShovelBank.png",
+        "interface/card_panel_bg.png", "interface/SelectorScreen.png"
+    });
+    if (!gameLevelData->showScroll)
+        background->setPos(-115, 0);
+    gameLevelData->loadAccess(this);
+}
+
+void GameScene::loadAcessFinished()
+{
+    if (!gameLevelData->showScroll || !gameLevelData->canSelectCard) {
+        for (auto item: plantProtoTypes.values()) {
+            if (item->canSelect) {
+                selectedPlantArray.push_back(item);
+                if (gameLevelData->maxSelectedCards > 0 && selectedPlantArray.size() >= gameLevelData->maxSelectedCards)
+                    break;
+            }
+        }
+    }
+    if (gameLevelData->showScroll) {
+        backgroundMusic->setMedia(QUrl("qrc:/audio/Look_up_at_the_Sky.mp3"));
+        backgroundMusic->play();
+        setInfoText(QString(tr("%1\' house")).arg(QSettings().value("Global/Username").toString()));
+        (new Timer(this, 1000, [this]{
+            setInfoText("");
+            for (auto zombie: background->childItems())
+                static_cast<MoviePixmapItem *>(zombie)->start();
+            Animate(background).move(QPointF(-500, 0)).speed(0.5).finish([this] {
+                Animate(menuGroup).move(QPointF(sceneRect().topRight() - QPointF(menuGroup->boundingRect().width(), 0))).speed(0.5).finish();
+                auto scrollBack = [this] {
+                    Animate(background).move(QPointF(-115, 0)).speed(0.5).finish([this] {
+                        for (auto zombie: background->childItems())
+                            delete zombie;
+                        letsGo();
+                    });
+                };
+                if (gameLevelData->canSelectCard) {
+                    Animate(selectingPanel).move(QPointF(100, 0)).speed(3).finish([this] { sunNumGroup->setVisible(true); });
+                    connect(selectCardButtonOkay, &MouseEventPixmapItem::clicked, [this, scrollBack] {
+                        sunNumGroup->setVisible(false);
+                        for (auto card: cardPanel->childItems()) {
+                            card->setCursor(Qt::ArrowCursor);
+                            card->setEnabled(false);
+                        }
+                        Animate(selectingPanel).move(QPointF(100, -selectingPanel->boundingRect().height())).speed(3).finish(scrollBack);
+                    });
+                }
+                else {
+                    (new Timer(this, 1000, scrollBack))->start();
+                }
+            });
+        }))->start();
+    }
+    else {
+        Animate(menuGroup).move(QPointF(sceneRect().topRight() - QPointF(menuGroup->boundingRect().width(), 0))).speed(0.5).finish();
+        letsGo();
+    }
+}
+
+
+
+//光敏传感器白天转换为黑夜的切换
+void GameScene::setNightMode(bool night)
+{
+    // 夜晚关卡（dKind == 0）始终维持黑暗模式，不受传感器控制
+    if (gameLevelData->dKind == 0)
+        night = true;
+    if (isNightMode == night)
+        return;
+    isNightMode = night;
+    QPointF pos = background->pos();
+
+    QString nightBg;
+
+
+    // 各关卡光敏传感器触发黑夜时的背景
+    if (gameLevelData->eName == "3")           // Level 1-3 → 黑夜用 background2
+        nightBg = "interface/background2.jpg";
+    else if (gameLevelData->eName == "4")      // Level 1-4 (Pool)
+        nightBg = "interface/background4.jpg";
+    else if (gameLevelData->eName == "5")      // Level 1-5 (Roof)
+        nightBg = "interface/background6boss.jpg";
+    else if (gameLevelData->eName == "1")      // Level 1-1
+        nightBg = "interface/background1unsodded1.jpg";
+    else if (gameLevelData->eName == "2")      // Level 1-2
+        nightBg = "interface/background1unsodded2.jpg";
+    else
+        nightBg = "interface/background2.jpg"; // 默认
+
+    background->setPixmap(gImageCache->load(night ? nightBg : gameLevelData->backgroundImage));
+    background->setPos(pos);
+
+    // 非永久夜晚关卡（dKind != 0）：光敏传感器触发的昼夜切换
+    if (gameLevelData->dKind != 0) {
+
+        // 控制阳光掉落：黑夜不产阳光，白天恢复
+        gameLevelData->produceSun = !night;
+
+        // 通知所有植物昼夜切换（蘑菇休眠/苏醒）
+        for (auto *plant : plantInstances) {
+            plant->onDayNightChanged(night);
+        }
+    }
+}
+
+bool GameScene::nightMode() const
+{
+    return isNightMode;
+}
+
+
+void GameScene::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
+{
+    QGraphicsScene::mouseMoveEvent(mouseEvent);
+    emit mouseMove(mouseEvent);
+}
+
+void GameScene::mousePressEvent(QGraphicsSceneMouseEvent *mouseEvent)
+{
+    QGraphicsScene::mousePressEvent(mouseEvent);
+    emit mousePress(mouseEvent);
+}
+
+GameLevelData *GameScene::getGameLevelData() const
+{
+    return gameLevelData;
+}
+
+void GameScene::letsGo()
+{
+    sunNumGroup->setPos(105, -sunNumGroup->boundingRect().height());
+    sunNumGroup->setVisible(true);
+    Animate(sunNumGroup).move(QPointF(105, 0)).speed(0.5).finish();
+    if (gameLevelData->hasShovel)
+        Animate(shovelBackground).move(QPointF(235, 0)).speed(0.5).finish();
+    if (!gameLevelData->showScroll || !gameLevelData->canSelectCard) {
+        cardPanel->setPos(-100, 0);
+        Animate(cardPanel).move(QPointF(0, 0)).speed(0.5).finish();
+    }
+    for (auto i: cardPanel->childItems())
+        delete i;
+    for (int i = 0; i < selectedPlantArray.size(); ++i) {
+        auto &item = selectedPlantArray[i];
+
+        PlantCardItem *plantCardItem = new PlantCardItem(item);
+        plantCardItem->setChecked(false);
+        cardPanel->addToGroup(plantCardItem);
+        plantCardItem->setPos(0, i * 60);
+        TooltipItem *tooltipItem = new TooltipItem("");
+        tooltipItem->setVisible(false);
+        tooltipItem->setOpacity(0.9);
+        tooltipItem->setZValue(1);
+        addItem(tooltipItem);
+
+        connect(plantCardItem, &PlantCardItem::hoverEntered, [this, tooltipItem](QGraphicsSceneHoverEvent *event) {
+            if (choose) return;
+            tooltipItem->setPos(event->scenePos() + QPointF(5, 15));
+            tooltipItem->setVisible(true);
+        });
+        connect(plantCardItem, &PlantCardItem::hoverMoved, [this, tooltipItem](QGraphicsSceneHoverEvent *event) {
+            if (choose) return;
+            tooltipItem->setPos(event->scenePos() + QPointF(5, 15));
+        });
+        connect(plantCardItem, &PlantCardItem::hoverLeft, [this, tooltipItem](QGraphicsSceneHoverEvent *event) {
+            if (choose) return;
+            tooltipItem->setPos(event->scenePos() + QPointF(5, 15));
+            tooltipItem->setVisible(false);
+        });
+
+        cardGraphics.push_back({ plantCardItem, tooltipItem });
+        cardReady.push_back({ false, false });
+        updateTooltip(i);
+    }
+    // All excluded mousePress or clicked must be triggered from one object to avoid duplicated triggering.
+    connect(this, &GameScene::mousePress, [this](QGraphicsSceneMouseEvent *event) {
+        // 点击菜单按钮本身时不关闭菜单（避免双击问题）
+        if (menuPopup->isVisible() && !menuGroup->contains(event->scenePos() - menuGroup->scenePos())
+            && !menuPopupBack->contains(event->scenePos() - menuPopupBack->scenePos())) {
+            menuPopup->setVisible(false);
+            setPaused(false);  // 关闭菜单恢复游戏
+        }
+        if (choose) return;
+        int i;
+        for (i = 0; i < selectedPlantArray.size(); ++i) {
+            if (cardReady[i].cool && cardReady[i].sun &&
+                cardGraphics[i].plantCard->contains(event->scenePos() - cardGraphics[i].plantCard->scenePos()))
+                break;
+        }
+        Plant *item = nullptr;
+        QPointF delta;
+        if (i != selectedPlantArray.size()) {
+            cardGraphics[i].tooltip->setVisible(false);
+            item = selectedPlantArray[i];
+            QPixmap staticGif = gImageCache->load(item->staticGif);
+            delta = QPointF(-0.5 * (item->beAttackedPointL + item->beAttackedPointR), 20 - staticGif.height());
+            Animate(movePlant).finish();
+            movePlantAlpha->setPixmap(staticGif);
+            movePlant->setPixmap(staticGif);
+            movePlant->setPos(event->scenePos() + delta);
+            movePlant->setVisible(true);
+            seedliftMusic->stop();
+            seedliftMusic->play();
+            choose = 1;
+        }
+        else if (shovel->contains(event->scenePos() - shovel->scenePos()) || shovelBackground->contains(event->scenePos() - shovelBackground->scenePos())) {
+            delta = QPointF(-28, -25);
+            Animate(shovel).finish();
+            shovel->setCursor(Qt::ArrowCursor);
+            shovelBackground->setCursor(Qt::ArrowCursor);
+            shovel->setPos(event->scenePos() - shovelBackground->scenePos() + delta);
+            shovelMusic->stop();
+            shovelMusic->play();
+            choose = 2;
+        }
+        else
+            return;
+        QSharedPointer<QMetaObject::Connection> moveConnection(new QMetaObject::Connection), clickConnection(new QMetaObject::Connection);
+        QSharedPointer<QUuid> uuid(new QUuid);
+        *moveConnection = connect(this, &GameScene::mouseMove, [this, delta, item, uuid](QGraphicsSceneMouseEvent *e) {
+            if (choose == 1) {
+                movePlant->setPos(e->scenePos() + delta);
+                auto xPair = coordinate.choosePlantX(e->scenePos().x()), yPair = coordinate.choosePlantY( e->scenePos().y());
+                if (item->canGrow(xPair.second, yPair.second)) {
+                    movePlantAlpha->setVisible(true);
+                    movePlantAlpha->setPos(xPair.first + item->getDX(), yPair.first + item->getDY(xPair.second, yPair.second) - item->height);
+                }
+                else
+                    movePlantAlpha->setVisible(false);
+            }
+            else {
+                shovel->setPos(e->scenePos() - shovelBackground->scenePos() + delta);
+                PlantInstance *plant = getPlant(e->scenePos());
+                if (!uuid->isNull() && (!plant || plant->uuid != *uuid)) {
+                    PlantInstance *prevPlant = getPlant(*uuid);
+                    if (prevPlant)
+                        prevPlant->picture->setOpacity(1.0);
+                }
+                if (plant && plant->uuid != *uuid) {
+                    plant->picture->setOpacity(0.6);
+                }
+                if (plant) {
+                    *uuid = plant->uuid;
+                    shovel->setCursor(Qt::PointingHandCursor);
+                }
+                else {
+                    *uuid = QUuid();
+                    shovel->setCursor(Qt::ArrowCursor);
+                }
+            }
+        });
+        *clickConnection = connect(this, &GameScene::mousePress, [this, i, moveConnection, clickConnection, item, uuid](QGraphicsSceneMouseEvent *e) {
+            disconnect(*moveConnection);
+            disconnect(*clickConnection);
+            if (choose == 1) {
+                movePlantAlpha->setVisible(false);
+                auto xPair = coordinate.choosePlantX(e->scenePos().x()), yPair = coordinate.choosePlantY(e->scenePos().y());
+                if (e->button() == Qt::LeftButton && item->canGrow(xPair.second, yPair.second)) {
+                    movePlant->setVisible(false);
+                    MoviePixmapItem *growGif;
+                    if (gameLevelData->LF[yPair.second] == 1)
+                        growGif = imgGrowSoil;
+                    else
+                        growGif = imgGrowSpray;
+                    growGif->setPos(xPair.first - 30, yPair.first - 30);
+                    growGif->setVisible(true);
+                    growGif->start();
+                    QSharedPointer<QMetaObject::Connection> connection(new QMetaObject::Connection);
+                    *connection = connect(growGif, &MoviePixmapItem::finished, [growGif, connection]{
+                        growGif->setVisible(false);
+                        growGif->reset();
+                        disconnect(*connection.data());
+                    });
+                    auto key = qMakePair(xPair.second, yPair.second);
+                    if (plantPosition.contains(key) && plantPosition[key].contains(item->pKind))
+                        plantDie(plantPosition[key][item->pKind]);
+                    PlantInstance *plantInstance = PlantInstanceFactory(item);
+                    plantInstance->birth(xPair.second, yPair.second);
+                    plantInstances.push_back(plantInstance);
+                    if (!plantPosition.contains(key))
+                        plantPosition.insert(key, QMap<int, PlantInstance *>());
+                    plantPosition[key].insert(item->pKind, plantInstance);
+                    plantUuid.insert(plantInstance->uuid, plantInstance);
+                    doCoolTime(i);
+                    sunNum -= item->sunNum;
+                    updateSunNum();
+                    // TODO: Plant Water music
+                    plantMusic1->stop();
+                    plantMusic2->stop();
+                    if (qrand() % 2)
+                        plantMusic1->play();
+                    else
+                        plantMusic2->play();
+                }
+                else {
+                    tapMusic->stop();
+                    tapMusic->play();
+                    Animate(movePlant).move(cardGraphics[i].plantCard->scenePos() + QPointF(10, 0)).speed(1.5).finish([this] {
+                        movePlant->setVisible(false);
+                    });
+                }
+            }
+            else {
+                Animate(shovel).move(QPointF(0, -5)).speed(1.5).finish([this] {
+                    shovel->setCursor(Qt::PointingHandCursor);
+                    shovelBackground->setCursor(Qt::PointingHandCursor);
+                });
+                if (!uuid->isNull()) {
+                    PlantInstance *prevPlant = getPlant(*uuid);
+                    if (prevPlant)
+                        prevPlant->picture->setOpacity(1.0);
+                }
+                PlantInstance *plant;
+                if (e->button() == Qt::LeftButton && (plant = getPlant(e->scenePos()))) {
+                    plantDie(plant);
+                    plantMusic1->stop();
+                    plantMusic2->stop();
+                    plantMusic2->play();
+                }
+                else {
+                    tapMusic->stop();
+                    tapMusic->play();
+                }
+            }
+            choose = 0;
+
+        });
+    });
+    backgroundMusic->blockSignals(true);
+    backgroundMusic->stop();
+    backgroundMusic->blockSignals(false);
+    gameLevelData->startGame(this);
+}
+
+void GameScene::beginCool()
+{
+    for (int i = 0; i < selectedPlantArray.size(); ++i) {
+        auto &item = selectedPlantArray[i];
+        auto &plantCardItem = cardGraphics[i].plantCard;
+        if (item->coolTime < 7.6) {
+            plantCardItem->setPercent(1.0);
+            cardReady[i].cool = true;
+            if (item->sunNum <= sunNum) {
+                cardReady[i].sun = true;
+                plantCardItem->setChecked(true);
+            }
+            updateTooltip(i);
+            continue;
+        }
+        doCoolTime(i);
+    }
+}
+
+void GameScene::updateTooltip(int index)
+{
+    auto &item = selectedPlantArray[index];
+    QString text = "<b>" + item->cName + "</b><br />" +
+                   QString(tr("Cool down: %1s")).arg(item->coolTime) + "<br />";
+    text += item->toolTip;
+    if (!cardReady[index].cool)
+        text += "<br><span style=\"color:#f00\">" + tr("Rechanging...") + "</span>";
+    if (!cardReady[index].sun)
+        text += "<br><span style=\"color:#f00\">" + tr("Not enough sun!") + "</span>";
+    cardGraphics[index].tooltip->setText(text);
+}
+
+QPair<MoviePixmapItem *, std::function<void(bool)> > GameScene::newSun(int sunNum)
+{
+    MoviePixmapItem *sunGif = new MoviePixmapItem("interface/Sun.gif");
+    if (sunNum == 15)
+        sunGif->setScale(46.0 / 79.0);
+    else if (sunNum != 25)
+        sunGif->setScale(100.0 / 79.0);
+    sunGif->setZValue(2);
+    sunGif->setOpacity(0.8);
+    sunGif->setCursor(Qt::PointingHandCursor);
+    addItem(sunGif);
+    QSharedPointer<QTimer *> timer(new QTimer *(nullptr));
+    QSharedPointer<QMetaObject::Connection> connection(new QMetaObject::Connection);
+
+    *connection = connect(sunGif, &MoviePixmapItem::click, [this, sunGif, sunNum, timer] {
+        if (choose != 0) return;
+        if (*timer)
+            delete *timer;
+        sunMusic->stop();
+        sunMusic->play();
+        Animate(sunGif).finish().move(QPointF(100, 0)).speed(1).scale(34.0 / 79.0).finish([this, sunGif, sunNum] {
+            delete sunGif;
+            this->sunNum += sunNum;
+            updateSunNum();
+        });
+    });
+    return qMakePair(sunGif, [this, sunGif, timer, connection](bool finished) {
+        if (finished) {
+            (*timer = new Timer(this, 8000, [this, sunGif, connection] {
+                disconnect(*connection);
+                sunGif->setCursor(Qt::ArrowCursor);
+                Animate(sunGif).fade(0).duration(500).finish([sunGif] {
+                    delete sunGif;
+                });
+            }))->start();
+        }
+    });
+}
+
+
+void GameScene::beginSun(int sunNum)
+{
+    // 仅在白天（produceSun == true）时实际掉落阳光
+    if (gameLevelData->produceSun) {
+        auto sunGifAndOnFinished = newSun(sunNum);
+        MoviePixmapItem *sunGif = sunGifAndOnFinished.first;
+        std::function<void(bool)> onFinished = sunGifAndOnFinished.second;
+        double toX = coordinate.getX(1 + qrand() % coordinate.colCount()),
+               toY = coordinate.getY(1 + qrand() % coordinate.rowCount());
+        sunGif->setPos(toX, -100);
+        sunGif->start();
+        Animate(sunGif).move(QPointF(toX, toY - 53)).speed(0.04).finish(onFinished);
+    }
+    // 保持定时器循环：无论昼夜都继续调度，确保切换回白天时能恢复掉阳光
+    (new Timer(this, (qrand() % 9000 + 3000), [this, sunNum] { beginSun(sunNum); }))->start();
+}
+
+void GameScene::doCoolTime(int index)
+{
+    auto &item = selectedPlantArray[index];
+    cardGraphics[index].plantCard->setPercent(0);
+    cardGraphics[index].plantCard->setChecked(false);
+    if (cardReady[index].cool) {
+        cardReady[index].cool = false;
+        updateTooltip(index);
+    }
+    (new TimeLine(this, qRound(item->coolTime * 1000), 20, [this, index](qreal x) {
+        cardGraphics[index].plantCard->setPercent(x);
+    }, [this, index] {
+        cardReady[index].cool = true;
+        if (cardReady[index].sun)
+            cardGraphics[index].plantCard->setChecked(true);
+        updateTooltip(index);
+    }))->start();
+}
+
+void GameScene::updateSunNum()
+{
+    sunNumText->setText(QString::number(sunNum));
+    QSizeF sunNumTextSize = sunNumText->boundingRect().size();
+    sunNumText->setPos(76 - sunNumTextSize.width() / 2, (sunNumGroup->boundingRect().height() - sunNumTextSize.height()) / 2);
+    for (int i = 0; i < selectedPlantArray.size(); ++i) {
+        auto &item = selectedPlantArray[i];
+        auto &plantCardItem = cardGraphics[i].plantCard;
+        if (item->sunNum <= sunNum) {
+            if (!cardReady[i].sun) {
+                cardReady[i].sun = true;
+                updateTooltip(i);
+            }
+            if (cardReady[i].cool)
+                plantCardItem->setChecked(true);
+        }
+        else {
+            if (cardReady[i].sun) {
+                cardReady[i].sun = false;
+                updateTooltip(i);
+            }
+            plantCardItem->setChecked(false);
+        }
+    }
+}
+
+QPointF GameScene::sizeToPoint(const QSizeF &size)
+{
+    return QPointF(size.width(), size.height());
+}
+
+void GameScene::customSpecial(const QString &name, int col, int row)
+{
+    PlantInstance *plantInstance = PlantInstanceFactory(getPlantProtoType(name));
+    plantInstance->birth(col, row);
+    plantInstances.push_back(plantInstance);
+    auto key = qMakePair(col, row);
+    if (!plantPosition.contains(key))
+        plantPosition.insert(key, QMap<int, PlantInstance *>());
+    plantPosition[key].insert(plantInstance->plantProtoType->pKind, plantInstance);
+    plantUuid.insert(plantInstance->uuid, plantInstance);
+}
+
+void GameScene::addToGame(QGraphicsItem *item)
+{
+    gameGroup->addToGroup(item);
+}
+
+void GameScene::beginZombies()
+{
+    waveMusic->setMedia(QUrl("qrc:/audio/awooga.mp3"));
+    waveMusic->play();
+    Animate(flagMeter).move(QPointF(700, 560)).speed(0.5).finish();
+    advanceFlag();
+    QSharedPointer<std::function<void(void)> > playGroan(new std::function<void(void)>);
+    *playGroan = [this, playGroan] {
+        switch (qrand() % 6) {
+            case 0: groanMusic->setMedia(QUrl("qrc:/audio/groan1.mp3")); break;
+            case 1: groanMusic->setMedia(QUrl("qrc:/audio/groan2.mp3")); break;
+            case 2: groanMusic->setMedia(QUrl("qrc:/audio/groan3.mp3")); break;
+            case 3: groanMusic->setMedia(QUrl("qrc:/audio/groan4.mp3")); break;
+            case 4: groanMusic->setMedia(QUrl("qrc:/audio/groan5.mp3")); break;
+            default: groanMusic->setMedia(QUrl("qrc:/audio/groan6.mp3")); break;
+        }
+        groanMusic->play();
+        (new Timer(this, 20000, *playGroan))->start();
+    };
+    (new Timer(this, 20000, *playGroan))->start();
+}
+
+void GameScene::prepareGrowPlants(std::function<void(void)> functor)
+{
+    QPixmap imgPrepareGrowPlants = gImageCache->load("interface/PrepareGrowPlants.png");
+    QGraphicsPixmapItem *imgPrepare = new QGraphicsPixmapItem(imgPrepareGrowPlants.copy(0, 0, 255, 108)),
+            *imgGrow    = new QGraphicsPixmapItem(imgPrepareGrowPlants.copy(0, 108, 255, 108)),
+            *imgPlants  = new QGraphicsPixmapItem(imgPrepareGrowPlants.copy(0, 216, 255, 108));
+    QPointF pos = sizeToPoint(sceneRect().size() - imgPrepare->boundingRect().size()) / 2;
+    imgPrepare->setPos(pos);
+    imgGrow->setPos(pos);
+    imgPlants->setPos(pos);
+    imgPrepare->setZValue(1);
+    imgGrow->setZValue(1);
+    imgPlants->setZValue(1);
+    imgPrepare->setVisible(false);
+    imgGrow->setVisible(false);
+    imgPlants->setVisible(false);
+    addItem(imgPrepare);
+    addItem(imgGrow);
+    addItem(imgPlants);
+    imgPrepare->setVisible(true);
+    backgroundMusic->blockSignals(true);
+    backgroundMusic->stop();
+    backgroundMusic->blockSignals(false);
+    backgroundMusic->setMedia(QUrl("qrc:/audio/readysetplant.mp3"));
+    backgroundMusic->play();
+    (new Timer(this, 600, [this, imgPrepare, imgGrow, imgPlants, functor] {
+        delete imgPrepare;
+        imgGrow->setVisible(true);
+        (new Timer(this, 400, [this, imgGrow, imgPlants, functor] {
+            delete imgGrow;
+            imgPlants->setVisible(true);
+            (new Timer(this, 1200, [this, imgPlants, functor] {
+                delete imgPlants;
+                functor();
+            }))->start();
+        }))->start();
+    }))->start();
+}
+
+void GameScene::advanceFlag()
+{
+    ++waveNum;
+    flagMeter->updateFlagZombies(waveNum);
+    if (waveNum < gameLevelData->flagNum) {
+        auto iter = gameLevelData->flagToMonitor.find(waveNum);
+        if (iter != gameLevelData->flagToMonitor.end())
+            (new Timer(this, 16900, [this, iter] { (*iter)(this); }))->start();
+        if (waveTimer) {
+            waveTimer->stop();
+            waveTimer->deleteLater();
+        }
+        waveTimer = new Timer(this, 19900, [this] { advanceFlag(); });
+        waveTimer->start();
+    }
+    auto &flagToSumNum = gameLevelData->flagToSumNum;
+    selectFlagZombie(flagToSumNum.second[qLowerBound(flagToSumNum.first, waveNum) - flagToSumNum.first.begin()]);
+}
+
+void GameScene::plantDie(PlantInstance *plant)
+{
+    // Guard against double-deletion
+    if (!plantUuid.contains(plant->uuid)) return;
+    plantUuid.remove(plant->uuid);
+
+    plantPosition[qMakePair(plant->col, plant->row)].remove(plant->plantProtoType->pKind);
+    for (int i = 0; i < plantTriggers[plant->row].size(); ) {
+        if (plantTriggers[plant->row][i]->plant == plant) {
+            delete plantTriggers[plant->row][i];
+            plantTriggers[plant->row].removeAt(i);
+            continue;
+        }
+        ++i;
+    }
+    int idx = plantInstances.indexOf(plant);
+    if (idx >= 0)
+        plantInstances.removeAt(idx);
+    delete plant;
+}
+
+
+void GameScene::zombieDie(ZombieInstance *zombie)
+{
+    // Guard against double-deletion
+    if (!zombieUuid.contains(zombie->uuid)) return;
+    zombieUuid.remove(zombie->uuid);
+
+    int i = zombieInstances.indexOf(zombie);
+    if (i >= 0)
+        zombieInstances.removeAt(i);
+    zombieRow[zombie->row].removeOne(zombie);
+    if (zombieInstances.isEmpty() && waveNum < gameLevelData->flagNum) {
+        if (waveTimer) {
+            waveTimer->stop();
+            waveTimer->deleteLater();
+        }
+        waveTimer = new Timer(this, 5000, [this] { advanceFlag(); });
+        waveTimer->start();
+    }
+    delete zombie;
+}
+
+void GameScene::selectFlagZombie(int levelSum)
+{
+    int timeout = 1500;
+    QList<Zombie *> zombies, zombiesCandidate;
+    if (gameLevelData->largeWaveFlag.contains(waveNum)) {
+        waveMusic->setMedia(QUrl("qrc:/audio/siren.mp3"));
+        waveMusic->play();
+        Zombie *flagZombie = getZombieProtoType("oFlagZombie");
+        levelSum -= flagZombie->level;
+        zombies.push_back(flagZombie);
+        timeout = 300;
+    }
+    for (const auto &zombieData: gameLevelData->zombieData) {
+        if (zombieData.flagList.contains(levelSum)) {
+            Zombie *item = getZombieProtoType(zombieData.eName);
+            levelSum -= item->level;
+            zombies.push_back(item);
+        }
+        if (zombieData.firstFlag <= waveNum) {
+            Zombie *item = getZombieProtoType(zombieData.eName);
+            for (int i = 0; i < zombieData.num; ++i)
+                zombiesCandidate.push_back(item);
+        }
+    }
+    qSort(zombiesCandidate.begin(), zombiesCandidate.end(), [](Zombie *a, Zombie *b) { return a->level < b->level; });
+    while (levelSum > 0) {
+        if (zombiesCandidate.isEmpty()) {
+            // 没有候选僵尸，用默认僵尸填充
+            Zombie *item = getZombieProtoType("oZombie3");
+            levelSum -= item->level;
+            zombies.push_back(item);
+            continue;
+        }
+        while (!zombiesCandidate.isEmpty() && zombiesCandidate.last()->level > levelSum)
+            zombiesCandidate.pop_back();
+        if (zombiesCandidate.isEmpty()) {
+            Zombie *item = getZombieProtoType("oZombie3");
+            levelSum -= item->level;
+            zombies.push_back(item);
+            continue;
+        }
+        Zombie *item = zombiesCandidate[qrand() % zombiesCandidate.size()];
+        levelSum -= item->level;
+        zombies.push_back(item);
+    }
+    for (int i = 0; i < zombies.size(); ++i) {
+        Zombie *zombie = zombies[i];
+        (new Timer(this, i * timeout, [this, zombie] {
+            int row;
+            int maxAttempts = 100;
+            do {
+                row = qrand() % coordinate.rowCount() + 1;
+                maxAttempts--;
+            } while (!zombie->canPass(row) && maxAttempts > 0);
+            if (maxAttempts <= 0) row = 1; // 兜底：防止死循环
+            ZombieInstance * zombieInstance = ZombieInstanceFactory(zombie);
+            zombieInstance->birth(row);
+            zombieInstances.push_back(zombieInstance);
+            zombieRow[row].push_back(zombieInstance);
+            qSort(zombieRow[row].begin(), zombieRow[row].end(), [](ZombieInstance *a, ZombieInstance *b) {
+                return b->attackedLX < a->attackedLX;
+            });
+            zombieUuid.insert(zombieInstance->uuid, zombieInstance);
+        }))->start();
+    }
+    qDebug() << "Wave: " << waveNum;
+    for (auto item: zombies)
+        qDebug() << "    " << item->eName;
+}
+
+QMap<int, PlantInstance *> GameScene::getPlant(int col, int row)
+{
+    auto iter = plantPosition.find(qMakePair(col, row));
+    if (iter == plantPosition.end())
+        return QMap<int, PlantInstance*>();
+    return *iter;
+}
+
+PlantInstance *GameScene::getPlant(const QPointF &pos)
+{
+    for (auto plant: plantInstances)
+        if (plant->contains(pos - plant->picture->scenePos()))
+            return plant;
+    return nullptr;
+}
+
+bool GameScene::isCrater(int col, int row) const
+{
+    return qBinaryFind(craters, qMakePair(col, row)) != craters.end();
+}
+
+bool GameScene::isTombstone(int col, int row) const
+{
+    return qBinaryFind(tombstones, qMakePair(col, row)) != tombstones.end();
+}
+
+int GameScene::getWaveNum() const { return waveNum; }
+int GameScene::getFlagNum() const { return gameLevelData->flagNum; }
+LevelManager *GameScene::getLevelManager() const { return levelManager; }
+
+Coordinate &GameScene::getCoordinate()
+{
+    return coordinate;
+}
+
+void GameScene::addTrigger(int row, Trigger *trigger)
+{
+    plantTriggers[row].push_back(trigger);
+    qSort(plantTriggers[row].begin(), plantTriggers[row].end(), [](const Trigger *a, const Trigger *b) {
+        return a->to < b->to;
+    });
+}
+
+void GameScene::addCrater(int col, int row)
+{
+    QPair<int, int> crater = qMakePair(col, row);
+    if (!craters.contains(crater)) {
+        craters.push_back(crater);
+        qSort(craters);
+    }
+}
+
+void GameScene::addZombie(ZombieInstance *zombieInstance)
+{
+    zombieInstances.push_back(zombieInstance);
+    zombieRow[zombieInstance->row].push_back(zombieInstance);
+    std::sort(zombieRow[zombieInstance->row].begin(), zombieRow[zombieInstance->row].end(), [](ZombieInstance *a, ZombieInstance *b) {
+        return b->attackedLX < a->attackedLX;
+    });
+    zombieUuid.insert(zombieInstance->uuid, zombieInstance);
+}
+
+void GameScene::beginMonitor()
+{
+    monitorTimer = new QTimer(this);
+    monitorTimer->setInterval(16);  // 60fps 游戏循环
+    connect(monitorTimer, &QTimer::timeout, [this] {
+        if (paused) return;  // 暂停状态下跳过游戏逻辑更新
+        // Win/Lose check
+        if (levelManager)
+            levelManager->checkWinLose();
+
+        for (int row = 1; row <= coordinate.rowCount(); ++row) {
+            QList<ZombieInstance *> &zombiesOnRow = zombieRow[row];
+            if (zombiesOnRow.isEmpty()) continue;  // 跳过空行
+            QList<ZombieInstance *> zombiesCopy = zombiesOnRow;
+            for (ZombieInstance *zombie: zombiesCopy) {
+                QUuid zombieUuid = zombie->uuid;
+                if (zombie->hp > 0 && zombie->ZX <= 900) {
+                    QList<Trigger *> &triggersOnRow = plantTriggers[row];
+                    // 逆序遍历触发器（触发器按从左到右排列，僵尸从右向左移动）
+                    for (auto trigger: triggersOnRow) {
+                        if (trigger->from > zombie->attackedRX) break;  // 触发器在僵尸右侧，跳过
+                        if (trigger->to >= zombie->attackedLX
+                            && trigger->plant->canTrigger) {
+                            trigger->plant->triggerCheck(zombie, trigger);
+                        }
+                    }
+                }
+                ZombieInstance *z = getZombie(zombieUuid);
+                if (z)
+                    z->checkActs();
+            }
+        }
+    });
+    monitorTimer->start();
+}
+
+PlantInstance *GameScene::getPlant(const QUuid &uuid)
+{
+    if (plantUuid.contains(uuid))
+        return plantUuid[uuid];
+    return nullptr;
+}
+
+ZombieInstance *GameScene::getZombie(const QUuid &uuid)
+{
+    if (zombieUuid.contains(uuid))
+        return zombieUuid[uuid];
+    return nullptr;
+}
+
+QList<ZombieInstance *> GameScene::getZombieOnRow(int row)
+{
+    return zombieRow[row];
+}
+
+QList<ZombieInstance *> GameScene::getZombieOnRowRange(int row, qreal from, qreal to)
+{
+    QList<ZombieInstance *> zombies;
+    for (auto zombie: zombieRow[row])
+        if (zombie->hp > 0 && zombie->attackedLX < to && (zombie->attackedLX > from || zombie->attackedRX > from))
+            zombies.push_back(zombie);
+    return zombies;
+}
+
+Plant *GameScene::getPlantProtoType(const QString &eName)
+{
+    if (plantProtoTypes.find(eName) == plantProtoTypes.end())
+        plantProtoTypes.insert(eName, PlantFactory(this, eName));
+    return plantProtoTypes[eName];
+}
+
+Zombie *GameScene::getZombieProtoType(const QString &eName)
+{
+    if (zombieProtoTypes.find(eName) == zombieProtoTypes.end())
+        zombieProtoTypes.insert(eName, ZombieFactory(this, eName));
+    return zombieProtoTypes[eName];
+}
+
+void GameScene::setPaused(bool p)
+{
+    if (paused == p) return;
+    paused = p;
+    gPaused = p;
+    if (paused) {
+        // 暂停：停止主游戏循环和所有定时器
+        if (monitorTimer)
+            monitorTimer->stop();
+        if (waveTimer)
+            waveTimer->stop();
+        // 暂停所有 GIF 动画（仅遍历 gameGroup 子项，避免遍历全场景 UI 元素）
+        for (auto *item : gameGroup->childItems()) {
+            if (auto *movieItem = dynamic_cast<MoviePixmapItem *>(item))
+                movieItem->stop();
+        }
+    } else {
+        // 恢复：重新启动
+        if (monitorTimer)
+            monitorTimer->start();
+        if (waveTimer && waveTimer->parent())  // parent() 检查确保未被 deleteLater 清理
+            waveTimer->start();
+        // 恢复所有 GIF 动画
+        for (auto *item : gameGroup->childItems()) {
+            if (auto *movieItem = dynamic_cast<MoviePixmapItem *>(item))
+                movieItem->start();
+        }
+    }
+}
+
+bool GameScene::isPaused() const
+{
+    return paused;
+}
+
+void GameScene::beginBGM()
+{
+    backgroundMusic->blockSignals(true);
+    backgroundMusic->stop();
+    backgroundMusic->blockSignals(false);
+    backgroundMusic->setMedia(QUrl(gameLevelData->backgroundMusic));
+    backgroundMusic->play();
+}
+
+FlagMeter::FlagMeter(GameLevelData *gameLevelData)
+    : flagNum(gameLevelData->flagNum),
+      flagHeadStep(140.0 / (flagNum - 1)),
+      flagMeterEmpty(gImageCache->load("interface/FlagMeterEmpty.png")),
+      flagMeterFull(gImageCache->load("interface/FlagMeterFull.png")),
+      flagTitle(new QGraphicsPixmapItem(gImageCache->load("interface/FlagMeterLevelProgress.png"))),
+      flagHead(new QGraphicsPixmapItem(gImageCache->load("interface/FlagMeterParts1.png")))
+{
+    setPixmap(flagMeterEmpty);
+
+    flagTitle->setPos(35, 12);
+    flagTitle->setParentItem(this);
+    for (auto i: gameLevelData->largeWaveFlag) {
+        QGraphicsPixmapItem *flag = new QGraphicsPixmapItem(gImageCache->load("interface/FlagMeterParts2.png"));
+        flag->setPos(150 - (i - 1) * flagHeadStep, -3);
+        flag->setParentItem(this);
+        flags.insert(i, flag);
+    }
+    flagHead->setPos(139, -4);
+    flagHead->setParentItem(this);
+    updateFlagZombies(1);
+}
+
+void FlagMeter::updateFlagZombies(int flagZombies)
+{
+    auto iter = flags.find(flagZombies);
+    if (iter != flags.end())
+        iter.value()->setY(-12);
+    if (flagZombies < flagNum) {
+        qreal x = 150 - (flagZombies - 1) * flagHeadStep;
+        flagHead->setPos(x - 11, -4);
+        QPixmap flagMeter(flagMeterFull);
+        QPainter p(&flagMeter);
+        p.drawPixmap(0, 0, flagMeterEmpty.copy(0, 0, qRound(x), 21));
+        setPixmap(flagMeter);
+    }
+    else {
+        flagHead->setPos(-1, -3);
+        setPixmap(flagMeterFull);
+    }
+}
+
+Trigger::Trigger(PlantInstance *plant, qreal from, qreal to, int direction, int id)
+        : plant(plant), from(from), to(to),
+          direction(direction), id(id)
+{}

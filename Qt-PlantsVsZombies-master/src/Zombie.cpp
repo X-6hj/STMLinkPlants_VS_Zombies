@@ -128,6 +128,11 @@ ZombieInstance::ZombieInstance(const Zombie *zombie)
     damageStage1 = false;
     normalGif = zombie->normalGif;
     attackGif = zombie->attackGif;
+
+    isHypnotized = false;
+    attackTargetZombieUuid = QUuid();
+    hypnotizedTargetUuid = QUuid();
+    hypnotizedAttackTick = 0;
 }
 
 void ZombieInstance::birth(int row)
@@ -148,10 +153,28 @@ void ZombieInstance::birth(int row)
     picture->start();
     zombieProtoType->scene->addToGame(picture);
 }
-
+//魅惑菇修改
 void ZombieInstance::checkActs()
 {
     if (hp < 1) return;
+
+    // ---- 被魅惑的僵尸：向右移动 ----
+    if (isHypnotized) {
+        if (!isAttacking) {
+            attackedLX -= speed;   // speed 为负，实际向右
+            ZX = attackedLX;
+            X = attackedLX - zombieProtoType->beAttackedPointL;
+            picture->setX(X);
+            if (attackedLX > 900) {
+                zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+        }
+        judgeAttack();  // 攻击其他僵尸
+        return;
+    }
+
+    // ---- 原有逻辑：正常向左移动 ----
     if (beAttacked && !isAttacking) {
         judgeAttack();
     }
@@ -160,15 +183,144 @@ void ZombieInstance::checkActs()
         ZX = attackedLX -= speed;
         X -= speed;
         picture->setX(X);
-        // Clean up zombies that have gone well past the house (avoid memory leak)
         if (attackedRX < -200) {
             zombieProtoType->scene->zombieDie(this);
         }
     }
 }
-
+// 魅惑菇修改部分
 void ZombieInstance::judgeAttack()
 {
+    // ---- 被魅惑的僵尸：攻击其他未魅惑的僵尸 ----
+    if (isHypnotized) {
+        QList<ZombieInstance *> zombies = zombieProtoType->scene->getZombieOnRow(row);
+        ZombieInstance *target = nullptr;
+        for (auto *z : zombies) {
+            if (z == this || z->isHypnotized || z->goingDie || z->hp <= 0 || !z->beAttacked) continue;
+            if (qAbs(z->attackedLX - attackedLX) < 50 && z->attackedLX > attackedLX) {
+                target = z;
+                break;
+            }
+        }
+
+        if (target) {
+            if (!isAttacking) {
+                isAttacking = true;
+                picture->setMovie(attackGif);
+                picture->start();
+            }
+            // 攻击循环（每秒造成100伤害）
+            if (hypnotizedTargetUuid.isNull()) {
+                hypnotizedTargetUuid = target->uuid;
+                QUuid myUuid = uuid;
+                QUuid targetUuid = target->uuid;
+                QSharedPointer<std::function<void()>> attackLoop = QSharedPointer<std::function<void()>>::create();
+                *attackLoop = [this, myUuid, targetUuid, attackLoop] {
+                    ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+                    if (!self || self != this || goingDie) {
+                        hypnotizedTargetUuid = QUuid();
+                        isAttacking = false;
+                        picture->setMovie(normalGif);
+                        picture->start();
+                        return;
+                    }
+                    ZombieInstance *t = zombieProtoType->scene->getZombie(targetUuid);
+                    if (t && !t->goingDie && t->hp > 0 && t->beAttacked &&
+                        qAbs(t->attackedLX - attackedLX) < 50 && t->attackedLX > attackedLX) {
+                        t->getHit(100);
+                        if (t->hp <= 0 || t->goingDie) {
+                            hypnotizedTargetUuid = QUuid();
+                            isAttacking = false;
+                            picture->setMovie(normalGif);
+                            picture->start();
+                            return;
+                        }
+                        (new Timer(picture, 1000, *attackLoop))->start();
+                    } else {
+                        hypnotizedTargetUuid = QUuid();
+                        isAttacking = false;
+                        picture->setMovie(normalGif);
+                        picture->start();
+                    }
+                };
+                (*attackLoop)(); // 立即执行第一次攻击
+            }
+            return;
+        } else {
+            if (!hypnotizedTargetUuid.isNull()) {
+                hypnotizedTargetUuid = QUuid();
+                isAttacking = false;
+                picture->setMovie(normalGif);
+                picture->start();
+            }
+            return;
+        }
+    }
+
+    // ---- 普通僵尸：优先攻击被魅惑的僵尸 ----
+    QList<ZombieInstance *> zombies = zombieProtoType->scene->getZombieOnRow(row);
+    ZombieInstance *hypnoTarget = nullptr;
+    for (auto *z : zombies) {
+        if (z != this && z->isHypnotized && !z->goingDie && z->hp > 0 && z->beAttacked) {
+            if (qAbs(z->attackedLX - attackedLX) < 50) {
+                hypnoTarget = z;
+                break;
+            }
+        }
+    }
+
+    if (hypnoTarget) {
+        if (!isAttacking) {
+            isAttacking = true;
+            picture->setMovie(attackGif);
+            picture->start();
+        }
+        if (attackTargetZombieUuid.isNull()) {
+            attackTargetZombieUuid = hypnoTarget->uuid;
+            QUuid myUuid = uuid;
+            QUuid targetUuid = hypnoTarget->uuid;
+            QSharedPointer<std::function<void()>> attackLoop = QSharedPointer<std::function<void()>>::create();
+            *attackLoop = [this, myUuid, targetUuid, attackLoop] {
+                ZombieInstance *self = zombieProtoType->scene->getZombie(myUuid);
+                if (!self || self != this || goingDie) {
+                    attackTargetZombieUuid = QUuid();
+                    isAttacking = false;
+                    picture->setMovie(normalGif);
+                    picture->start();
+                    return;
+                }
+                ZombieInstance *target = zombieProtoType->scene->getZombie(targetUuid);
+                if (target && !target->goingDie && target->hp > 0 && target->beAttacked &&
+                    qAbs(target->attackedLX - attackedLX) < 50) {
+                    target->getHit(zombieProtoType->attack);
+                    if (target->hp <= 0 || target->goingDie) {
+                        attackTargetZombieUuid = QUuid();
+                        isAttacking = false;
+                        picture->setMovie(normalGif);
+                        picture->start();
+                        return;
+                    }
+                    (new Timer(picture, 1000, *attackLoop))->start();
+                } else {
+                    attackTargetZombieUuid = QUuid();
+                    isAttacking = false;
+                    picture->setMovie(normalGif);
+                    picture->start();
+                }
+            };
+            (*attackLoop)();
+        }
+        return;
+    } else {
+        if (!attackTargetZombieUuid.isNull()) {
+            attackTargetZombieUuid = QUuid();
+            isAttacking = false;
+            picture->setMovie(normalGif);
+            picture->start();
+        }
+    }
+
+    // ---- 原有逻辑：攻击植物（仅当没有被魅惑僵尸时） ----
     bool tempIsAttacking = false;
     PlantInstance *plant = nullptr;
     int col = zombieProtoType->scene->getCoordinate().getCol(ZX);
@@ -186,10 +338,10 @@ void ZombieInstance::judgeAttack()
     }
     if (tempIsAttacking != isAttacking) {
         isAttacking = tempIsAttacking;
-        if (damageStage1 && !zombieProtoType->damageGif1.isEmpty()) {
-            picture->setMovie(isAttacking ? zombieProtoType->damageAttackGif1 : zombieProtoType->damageGif1);
+        if (isAttacking) {
+            picture->setMovie(attackGif);
         } else {
-            picture->setMovie(isAttacking ? attackGif : normalGif);
+            picture->setMovie(normalGif);
         }
         picture->start();
     }
@@ -197,8 +349,13 @@ void ZombieInstance::judgeAttack()
         normalAttack(plant);
 }
 
+
 void ZombieInstance::normalAttack(PlantInstance *plantInstance)
 {
+    //魅惑菇添加：清除魅惑攻击目标
+    hypnotizedTargetUuid = QUuid();
+    attackTargetZombieUuid = QUuid();
+
     QMediaPlayer *player = getSharedAudioPlayer();
     if (qrand() % 2)
         player->setMedia(QUrl("qrc:/audio/chomp.mp3"));
@@ -265,8 +422,34 @@ void ZombieInstance::applySlow(qreal multiplier, int durationMs)
     }))->start();
 }
 
+//魅惑菇部分
+void ZombieInstance::hypnotize()
+{
+    if (goingDie || isHypnotized) return;
+    isHypnotized = true;
+
+    // 掉头：速度取反（原本正数向左，负数向右）
+    speed = -baseSpeed;
+
+    // 保持 beAttacked = true（允许其他僵尸攻击它）
+
+    // 如果正在攻击植物，停止攻击动画
+    if (isAttacking) {
+        isAttacking = false;
+        picture->setMovie(normalGif);
+        picture->start();
+    }
+}
+
 void ZombieInstance::crushDie()
 {
+    //魅惑菇添加
+    hypnotizedTargetUuid = QUuid();
+    attackTargetZombieUuid = QUuid();
+    isAttacking = false;
+    //
+
+
     if (goingDie)
         return;
     goingDie =  true;
@@ -286,8 +469,10 @@ void ZombieInstance::crushDie()
     }))->start();
 }
 
-void ZombieInstance::getPea(int attack, int direction)
+void ZombieInstance::getPea(int attack, int direction, int type)
 {
+    Q_UNUSED(direction);
+    Q_UNUSED(type);
     playNormalballAudio();
     getHit(attack);
 }
@@ -403,6 +588,13 @@ void ZombieInstance::autoReduceHp()
 
 void ZombieInstance::normalDie()
 {
+    //魅惑菇添加
+    hypnotizedTargetUuid = QUuid();
+    attackTargetZombieUuid = QUuid();
+    isAttacking = false;
+    //
+
+
     if (goingDie)
         return;
     goingDie = true;
@@ -439,6 +631,13 @@ void ZombieInstance::normalDie()
 
 void ZombieInstance::boomDie()
 {
+    //魅惑菇添加
+    hypnotizedTargetUuid = QUuid();
+    attackTargetZombieUuid = QUuid();
+    isAttacking = false;
+    //
+
+
     if (goingDie)
         return;
     goingDie = true;
@@ -479,6 +678,13 @@ void ZombieInstance::boomDie()
 
 void ZombieInstance::ashDie()
 {
+    //魅惑菇添加
+    hypnotizedTargetUuid = QUuid();
+    attackTargetZombieUuid = QUuid();
+    isAttacking = false;
+    //
+
+    
     if (goingDie)
         return;
     goingDie = true;
@@ -766,6 +972,23 @@ PoleVaultingZombieInstance::PoleVaultingZombieInstance(const Zombie *zombie)
 void PoleVaultingZombieInstance::checkActs()
 {
     if (hp < 1) return;
+
+    // ---- 被魅惑的僵尸：向右移动 ----
+    if (isHypnotized) {
+        if (!isAttacking) {
+            attackedLX -= speed;   // speed 为负，实际向右
+            ZX = attackedLX;
+            X = attackedLX - zombieProtoType->beAttackedPointL;
+            picture->setX(X);
+            if (attackedLX > 900) {
+                zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+        }
+        judgeAttack();  // 攻击其他僵尸
+        return;
+    }
+
     // 撑杆跳：跳过第一个植物
     if (hasPole && !jumping) {
         int col = zombieProtoType->scene->getCoordinate().getCol(ZX);
@@ -1070,6 +1293,23 @@ JackinTheBoxZombieInstance::JackinTheBoxZombieInstance(const Zombie *zombie)
 void JackinTheBoxZombieInstance::checkActs()
 {
     if (hp < 1 || goingDie) return;
+
+    // ---- 被魅惑的僵尸：向右移动 ----
+    if (isHypnotized) {
+        if (!isAttacking) {
+            attackedLX -= speed;   // speed 为负，实际向右
+            ZX = attackedLX;
+            X = attackedLX - zombieProtoType->beAttackedPointL;
+            picture->setX(X);
+            if (attackedLX > 900) {
+                zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+        }
+        judgeAttack();  // 攻击其他僵尸
+        return;
+    }
+
     if (exploded) {
         // 爆炸后僵尸直接死亡
         ashDie();
@@ -1297,6 +1537,23 @@ bool DancingZombieInstance::isAnyBackupAttacking()
 void DancingZombieInstance::checkActs()
 {
     if (hp < 1 || goingDie) return;
+
+    // ---- 被魅惑的僵尸：向右移动 ----
+    if (isHypnotized) {
+        if (!isAttacking) {
+            attackedLX -= speed;   // speed 为负，实际向右
+            ZX = attackedLX;
+            X = attackedLX - zombieProtoType->beAttackedPointL;
+            picture->setX(X);
+            if (attackedLX > 900) {
+                zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+        }
+        judgeAttack();  // 攻击其他僵尸
+        return;
+    }
+
     if (beAttacked && !isAttacking) {
         judgeAttack();
     }
@@ -1493,6 +1750,11 @@ void BackupDancerInstance::birth(int row)
 }
 
 // ===================== 潜水僵尸 =====================
+bool SnorkelZombie::canPass(int row) const
+{
+    return scene->getGameLevelData()->LF[row] == 2; // 仅水域行
+}
+
 SnorkelZombie::SnorkelZombie()
 {
     eName = "oSnorkelZombie";
@@ -1568,6 +1830,23 @@ void SnorkelZombieInstance::updateVisibility()
 void SnorkelZombieInstance::checkActs()
 {
     if (hp < 1 || goingDie) return;
+
+    // ---- 被魅惑的僵尸：向右移动 ----
+    if (isHypnotized) {
+        if (!isAttacking) {
+            attackedLX -= speed;   // speed 为负，实际向右
+            ZX = attackedLX;
+            X = attackedLX - zombieProtoType->beAttackedPointL;
+            picture->setX(X);
+            if (attackedLX > 900) {
+                zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+        }
+        judgeAttack();  // 攻击其他僵尸
+        return;
+    }
+
     // 每5帧检查一次可见性，减少性能开销
     visCheckTimer++;
     if (visCheckTimer >= 5) {
@@ -1590,12 +1869,14 @@ void SnorkelZombieInstance::checkActs()
     }
 }
 
-void SnorkelZombieInstance::getPea(int attack, int direction)
+void SnorkelZombieInstance::getPea(int attack, int direction, int type)
 {
+    Q_UNUSED(direction);
+    Q_UNUSED(type);
     // 潜水状态下免疫豌豆攻击
     if (submerged)
         return;
-    ZombieInstance::getPea(attack, direction);
+    ZombieInstance::getPea(attack, direction, type);
 }
 
 void SnorkelZombieInstance::getHit(int attack)
@@ -1608,6 +1889,11 @@ void SnorkelZombieInstance::getHit(int attack)
 }
 
 // ===================== 海豚骑士僵尸 =====================
+bool DolphinRiderZombie::canPass(int row) const
+{
+    return scene->getGameLevelData()->LF[row] == 2; // 仅水域行
+}
+
 DolphinRiderZombie::DolphinRiderZombie()
 {
     eName = "oDolphinRiderZombie";
@@ -1646,6 +1932,23 @@ DolphinRiderZombieInstance::DolphinRiderZombieInstance(const Zombie *zombie)
 void DolphinRiderZombieInstance::checkActs()
 {
     if (hp < 1 || goingDie) return;
+
+    // ---- 被魅惑的僵尸：向右移动 ----
+    if (isHypnotized) {
+        if (!isAttacking) {
+            attackedLX -= speed;   // speed 为负，实际向右
+            ZX = attackedLX;
+            X = attackedLX - zombieProtoType->beAttackedPointL;
+            picture->setX(X);
+            if (attackedLX > 900) {
+                zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+        }
+        judgeAttack();  // 攻击其他僵尸
+        return;
+    }
+
     // 海豚骑士跳跃：跳过遇到的第一个植物
     if (!jumped) {
         int col = zombieProtoType->scene->getCoordinate().getCol(ZX);
@@ -1734,6 +2037,11 @@ ImpInstance::ImpInstance(const Zombie *zombie)
 {}
 
 // ===================== 鸭子僵尸 =====================
+bool DuckyTubeZombie1::canPass(int row) const
+{
+    return scene->getGameLevelData()->LF[row] == 2; // 仅水域行
+}
+
 DuckyTubeZombie1::DuckyTubeZombie1()
 {
     eName = "oDuckyTubeZombie1";
@@ -1764,6 +2072,11 @@ DuckyTubeZombie1::DuckyTubeZombie1()
 }
 
 // ===================== 路障鸭子僵尸 =====================
+bool DuckyTubeZombie2::canPass(int row) const
+{
+    return scene->getGameLevelData()->LF[row] == 2; // 仅水域行
+}
+
 DuckyTubeZombie2::DuckyTubeZombie2()
 {
     eName = "oDuckyTubeZombie2";
@@ -1785,7 +2098,7 @@ DuckyTubeZombie2::DuckyTubeZombie2()
     lostHeadGif = "Zombies/Zombie/ZombieLostHead.gif";
     lostHeadAttackGif = "Zombies/Zombie/ZombieLostHeadAttack.gif";
     headGif = "Zombies/Zombie/ZombieHead.gif";
-    dieGif = "Zombies/Zombie/ZombieDie.gif";
+    dieGif = "Zombies/DuckyTubeZombie1/Die.gif";
     boomDieGif = "Zombies/Zombie/BoomDie.gif";
     standGif = path + "1.gif";
 }
@@ -1807,6 +2120,11 @@ void DuckyTubeZombie2Instance::playNormalballAudio()
 }
 
 // ===================== 铁桶鸭子僵尸 =====================
+bool DuckyTubeZombie3::canPass(int row) const
+{
+    return scene->getGameLevelData()->LF[row] == 2; // 仅水域行
+}
+
 DuckyTubeZombie3::DuckyTubeZombie3()
 {
     eName = "oDuckyTubeZombie3";
@@ -1828,7 +2146,7 @@ DuckyTubeZombie3::DuckyTubeZombie3()
     lostHeadGif = "Zombies/Zombie/ZombieLostHead.gif";
     lostHeadAttackGif = "Zombies/Zombie/ZombieLostHeadAttack.gif";
     headGif = "Zombies/Zombie/ZombieHead.gif";
-    dieGif = "Zombies/Zombie/ZombieDie.gif";
+    dieGif = "Zombies/DuckyTubeZombie1/Die.gif";
     boomDieGif = "Zombies/Zombie/BoomDie.gif";
     standGif = path + "1.gif";
 }
@@ -1901,6 +2219,23 @@ void ZomboniZombieInstance::leaveIceTrail()
 void ZomboniZombieInstance::checkActs()
 {
     if (hp < 1 || goingDie) return;
+
+    // ---- 被魅惑的僵尸：向右移动 ----
+    if (isHypnotized) {
+        if (!isAttacking) {
+            attackedLX -= speed;   // speed 为负，实际向右
+            ZX = attackedLX;
+            X = attackedLX - zombieProtoType->beAttackedPointL;
+            picture->setX(X);
+            if (attackedLX > 900) {
+                zombieProtoType->scene->zombieDie(this);
+                return;
+            }
+        }
+        judgeAttack();  // 攻击其他僵尸
+        return;
+    }
+
     if (!isAttacking) {
         attackedRX -= speed;
         ZX = attackedLX -= speed;
@@ -2041,9 +2376,9 @@ ZombieInstance *ZombieInstanceFactory(const Zombie *zombie)
         return new PoleVaultingZombieInstance(zombie);
     else if (zombie->eName == "oNewspaperZombie")
         return new NewspaperZombieInstance(zombie);
-    else if (zombie->eName == "oFootballZombie")
+    else if (zombie->eName == "oFootballZombie")//足球僵尸
         return new FootballZombieInstance(zombie);
-    else if (zombie->eName == "oScreenDoorZombie")
+    else if (zombie->eName == "oScreenDoorZombie")//铁门僵尸
         return new ScreenDoorZombieInstance(zombie);
     else if (zombie->eName == "oJackinTheBoxZombie")
         return new JackinTheBoxZombieInstance(zombie);
